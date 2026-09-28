@@ -1,5 +1,14 @@
 {% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/codemirror/5.65.16/lib/codemirror.min.css') }}">
+{% endblock %}
 {% block content %}
+<style>
+  .report-sql-editor .CodeMirror{height:320px;border:1px solid var(--color-border-tertiary);border-radius:6px;background:var(--color-background-primary);color:var(--color-text-primary);font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;line-height:1.6}
+  .report-sql-editor .CodeMirror-focused{border-color:#85B7EB;box-shadow:0 0 0 3px rgba(55,138,221,.12)}
+  .report-sql-editor .CodeMirror-gutters{border-right:1px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+  .report-sql-editor .CodeMirror-linenumber,.report-sql-editor .CodeMirror-placeholder{color:var(--color-text-tertiary)}
+</style>
 {% set report_type = report.report_type if report else 'manual' %}
 {% set label_style = "font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px" %}
 {% set input_style = "height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)" %}
@@ -149,18 +158,18 @@
     </div>
   </div>
 
-  <div class="report-mode" id="manualMode" style="{{ card_style }}">
+  <div class="report-mode report-sql-editor" id="manualMode" style="{{ card_style }}">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.05em">SQL</div>
       <div style="display:flex;gap:6px"></div>
     </div>
-    <textarea class="form-control sql-editor" id="sql_query" name="sql_query" placeholder="-- Exemplo para qualquer conector:
+    <textarea class="form-control sql-editor" id="sql_query" name="sql_query" spellcheck="false" autocomplete="off" placeholder="-- Exemplo para qualquer conector:
 SELECT campo1, campo2
 FROM nome_da_tabela
 WHERE condição
 
 -- Não qualifique o schema (ex: reports.)
--- Use apenas o nome da tabela diretamente." style="height:320px;width:100%;font-family:var(--font-mono, monospace);font-size:12px;line-height:1.6;padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);resize:vertical;color:var(--color-text-primary);background:var(--color-background-primary)">{{ report.sql_query if report else '' }}</textarea>
+-- Use apenas o nome da tabela diretamente.">{{ report.sql_query if report else '' }}</textarea>
   </div>
 
   <div class="report-mode" id="builderMode" style="{{ card_style }}">
@@ -285,10 +294,14 @@ WHERE condição
   </div>
 </form>
 
+<script src="{{ url_for('static', path='vendor/codemirror/5.65.16/lib/codemirror.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/codemirror/5.65.16/mode/sql/sql.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/codemirror/5.65.16/addon/display/placeholder.min.js') }}"></script>
 <script>
   const initialBuilderConfig = {{ builder_config|tojson }};
   let builderColumns = [];
 
+  const reportForm = document.getElementById("reportForm");
   const getReportType = () => document.querySelector("input[name='report_type']:checked")?.value || "manual";
   const manualMode = document.getElementById("manualMode");
   const builderMode = document.getElementById("builderMode");
@@ -302,12 +315,25 @@ WHERE condição
   const scheduleOptions = document.getElementById("scheduleOptions");
   const scheduleAutoField = document.getElementById("scheduleAutoField");
   const scheduleHorariosField = document.getElementById("scheduleHorariosField");
+  const sqlEditor = CodeMirror.fromTextArea(sqlQuery, {
+    mode: "text/x-mysql",
+    lineNumbers: true,
+    lineWrapping: true,
+    indentUnit: 2,
+    tabSize: 2,
+    extraKeys: {
+      "Ctrl-Enter": () => reportForm.requestSubmit(),
+      "Cmd-Enter": () => reportForm.requestSubmit(),
+    },
+  });
+  sqlEditor.on("change", () => sqlEditor.save());
 
   function toggleMode() {
     const isBuilder = getReportType() === "builder";
     manualMode.style.display = isBuilder ? "none" : "block";
     builderMode.style.display = isBuilder ? "block" : "none";
     sqlQuery.required = !isBuilder;
+    if (!isBuilder) window.setTimeout(() => sqlEditor.refresh(), 0);
   }
 
   function toggleScheduleOptions() {
@@ -384,7 +410,8 @@ WHERE condição
 
   function builderFormData() {
     updateHiddenBuilderFields();
-    const formData = new FormData(document.getElementById("reportForm"));
+    sqlEditor.save();
+    const formData = new FormData(reportForm);
     return new URLSearchParams(formData);
   }
 
@@ -424,7 +451,10 @@ WHERE condição
         document.getElementById("builderPreviewMeta").innerHTML = `<span class="text-danger">${error.message}</span>`;
       });
   });
-  document.getElementById("reportForm").addEventListener("submit", updateHiddenBuilderFields);
+  reportForm.addEventListener("submit", () => {
+    sqlEditor.save();
+    updateHiddenBuilderFields();
+  });
 
   toggleMode();
   toggleScheduleOptions();
