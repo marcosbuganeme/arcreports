@@ -62,3 +62,22 @@ def pao_factor(period: Competence):
     from decimal import Decimal
     month = contract_month(period)
     return Decimal('0.5') if month <= 2 else Decimal('0.7') if month <= 4 else Decimal('0.8') if month <= 6 else Decimal('1')
+
+
+def decimal_value(value):
+    from decimal import Decimal, InvalidOperation
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError('Informe um número válido, com ponto como separador decimal.') from exc
+    if not result.is_finite() or result < 0 or result > Decimal('1e12') or result.as_tuple().exponent < -12:
+        raise ValueError('Número fora do intervalo permitido (0 a 10¹²; até 12 casas decimais).')
+    return result
+
+
+def adjusted_goal(base, direction: str, period: Competence):
+    base = decimal_value(base)
+    if direction not in {'minimum', 'maximum'}:
+        raise ValueError('Direção da meta inválida.')
+    factor = pao_factor(period)
+    return base * factor if direction == 'minimum' else base / factor

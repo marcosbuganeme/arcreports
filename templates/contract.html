@@ -6,6 +6,13 @@
 <form method="get" action="/admin/contract" class="card card-body mb-3">
   <label for="contract-competence">Competência</label>
   <input id="contract-competence" class="form-control" type="month" name="competencia" min="2026-10" required value="{{ period.label if period else '' }}">
+  <label for="contract-goal" class="mt-3">Meta-base informada (simulação)</label>
+  <input id="contract-goal" class="form-control" type="number" name="meta_base" min="0" max="1000000000000" step="any" value="{{ base_goal if base_goal is defined else '95' }}">
+  <label for="contract-direction" class="mt-3">Direção da meta</label>
+  <select id="contract-direction" class="form-select" name="direcao">
+    <option value="minimum" {% if direction == 'minimum' %}selected{% endif %}>Mínima (resultado ≥ meta)</option>
+    <option value="maximum" {% if direction == 'maximum' %}selected{% endif %}>Máxima (resultado ≤ meta)</option>
+  </select>
   <button class="btn btn-primary mt-3" type="submit">Apurar competência</button>
 </form>
 {% if period %}
@@ -13,6 +20,7 @@
   <dt class="col-sm-4">Período inclusivo</dt><dd class="col-sm-8">{{ period.start.strftime('%d/%m/%Y') }} a {{ period.end.strftime('%d/%m/%Y') }}</dd>
   <dt class="col-sm-4">Mês contratual</dt><dd class="col-sm-8">{{ contract_month }}</dd>
   <dt class="col-sm-4">Fator PAO</dt><dd class="col-sm-8">{{ factor * 100 }}%</dd>
+  <dt class="col-sm-4">Meta ajustada da simulação</dt><dd class="col-sm-8">{{ base_goal }} {{ '×' if direction == 'minimum' else '÷' }} {{ factor }} = {{ goal }}</dd>
 </dl>
 <p>PAO: meses 1 e 2 = 50%; 3 e 4 = 70%; 5 e 6 = 80%; a partir do 7º = 100%.</p>
 <p class="text-muted">As definições dos relatórios instalados dependem da conferência do banco reports. Esta tela aplica as regras deste pacote.</p>

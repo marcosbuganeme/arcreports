@@ -41,3 +41,17 @@ def test_pao_rejects_before_contract():
     from app.billing_rules import pao_factor
     with pytest.raises(ValueError):
         pao_factor(Competence.parse('2026-09'))
+
+
+@pytest.mark.parametrize('label,base,direction,expected', [('2026-10','95','minimum','47.5'),('2026-10','8','maximum','16'),('2026-12','8','maximum','11.42857142857142857142857143'),('2027-02','8','maximum','10')])
+def test_adjusted_goals(label, base, direction, expected):
+    from app.billing_rules import adjusted_goal
+    from decimal import Decimal
+    assert adjusted_goal(base, direction, Competence.parse(label)) == Decimal(expected)
+
+
+@pytest.mark.parametrize('value', ['NaN','Infinity','-1','1e100','0.0000000000001'])
+def test_reject_invalid_decimal(value):
+    from app.billing_rules import decimal_value
+    with pytest.raises(ValueError):
+        decimal_value(value)
