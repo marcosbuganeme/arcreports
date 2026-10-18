@@ -25,6 +25,7 @@ PREVIEW_LIMIT = 100
 BULK_TABLE_ACTIONS = {"export", "clear", "recreate", "delete"}
 DESTRUCTIVE_BULK_TABLE_ACTIONS = {"clear", "recreate", "delete"}
 INTERNAL_TABLES = {
+    "ura_daily", "ura_import_runs",
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",

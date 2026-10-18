@@ -77,6 +77,7 @@ BUILDER_ALLOWED_OPERATORS = {
 BUILDER_AGGREGATES = {"count", "sum", "avg", "max", "min"}
 BUILDER_SORT_DIRECTIONS = {"asc", "desc"}
 BUILDER_EXCLUDED_TABLES = {
+    "ura_daily", "ura_import_runs",
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",

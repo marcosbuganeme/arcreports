@@ -82,6 +82,7 @@ AUTO_INDEX_CONTROL_COLUMNS = (
 )
 PREFIX_INDEX_DATA_TYPES = {"char", "varchar", "tinytext", "text", "mediumtext", "longtext"}
 INTERNAL_DESTINATION_TABLES = {
+    "ura_daily", "ura_import_runs",
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",

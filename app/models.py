@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint, func
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 
@@ -456,3 +456,38 @@ class AdminActionLog(Base):
     message: Mapped[Optional[str]] = mapped_column(Text)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class UraImportRun(Base):
+    __tablename__ = 'ura_import_runs'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    raw_csv: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    inserted_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    unchanged_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class UraDaily(Base):
+    __tablename__ = 'ura_daily'
+    __table_args__ = (UniqueConstraint('project', 'service_id', 'day', name='uq_ura_project_service_day'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    service_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    incoming: Mapped[int] = mapped_column(Integer, nullable=False)
+    answered: Mapped[int] = mapped_column(Integer, nullable=False)
+    abandoned: Mapped[int] = mapped_column(Integer, nullable=False)
+    blocked: Mapped[int] = mapped_column(Integer, nullable=False)
+    answered_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    abandoned_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    answered_after_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    abandoned_after_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    import_id: Mapped[int] = mapped_column(ForeignKey('ura_import_runs.id'), nullable=False, index=True)

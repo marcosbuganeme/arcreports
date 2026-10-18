@@ -4,6 +4,8 @@
 <p>Contrato iniciado em 22/09/2026. Regras aplicadas à competência selecionada.</p>
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 <form method="get" action="/admin/contract" class="card card-body mb-3">
+  <label for="contract-project">Projeto URA</label>
+  <input id="contract-project" class="form-control" name="projeto" maxlength="80" value="{{ project or 'DETRAN-GO' }}" required>
   <label for="contract-competence">Competência</label>
   <input id="contract-competence" class="form-control" type="month" name="competencia" min="2026-10" required value="{{ period.label if period else '' }}">
   <label for="contract-goal" class="mt-3">Meta-base informada (simulação)</label>
@@ -34,5 +36,60 @@
 {% endif %}
 <p>PAO: meses 1 e 2 = 50%; 3 e 4 = 70%; 5 e 6 = 80%; a partir do 7º = 100%.</p>
 <p class="text-muted">As definições dos relatórios instalados dependem da conferência do banco reports. Esta tela aplica as regras deste pacote.</p>
+{% endif %}
+{% if period %}
+<section class="card card-body mt-4" aria-labelledby="ura-import-title">
+<h2 id="ura-import-title" class="h4">Importar CSV diário da URA</h2>
+<p>Arquivo UTF-8 separado por ponto e vírgula, com 31 colunas. Reimportar o mesmo conteúdo conserva os registros. Conteúdo divergente para projeto/serviço/data é recusado sem sobrescrever a origem.</p>
+<form method="post" action="/admin/contract/ura">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="competencia" value="{{ period.label }}">
+  <input type="hidden" name="projeto" value="{{ project }}">
+  <label for="ura-file">Arquivo CSV (até 2 MB)</label>
+  <input class="form-control" id="ura-file" type="file" accept=".csv,text/csv">
+  <input type="hidden" id="ura-base64" name="csv_base64">
+  <input type="hidden" id="ura-filename" name="source_name" value="ura.csv">
+  <p id="ura-file-status" role="status" aria-live="polite"></p>
+  <details><summary>Colar conteúdo CSV manualmente</summary>
+    <label for="ura-csv">Conteúdo completo do CSV, incluindo cabeçalho</label>
+    <textarea id="ura-csv" name="csv_content" class="form-control" rows="6"></textarea>
+  </details>
+  <button class="btn btn-primary mt-3" type="submit">Importar para {{ project }}</button>
+</form>
+</section>
+<section class="mt-4" aria-labelledby="ura-history-title">
+<h2 id="ura-history-title" class="h4">Últimas importações do projeto</h2>
+<div class="table-responsive"><table class="table">
+<thead><tr><th>Importação / origem</th><th>Registros</th><th>Novos</th><th>Existentes</th><th>SHA-256 do conteúdo</th></tr></thead>
+<tbody>{% for run in imports %}<tr><td>#{{ run.id }} · {{ run.source_name }}<br>{{ run.imported_at | local_datetime }} · {{ run.username }}</td><td>{{ run.record_count }}</td><td>{{ run.inserted_count }}</td><td>{{ run.unchanged_count }}</td><td style="overflow-wrap:anywhere;max-width:24rem"><code>{{ run.sha256 }}</code></td></tr>
+{% else %}<tr><td colspan="5">Nenhum CSV importado para {{ project }}. Escolha um arquivo para iniciar a apuração.</td></tr>{% endfor %}</tbody>
+</table></div>
+</section>
+<script>
+(() => {
+  const fileInput = document.getElementById('ura-file');
+  const content = document.getElementById('ura-csv');
+  const status = document.getElementById('ura-file-status');
+  const encoded = document.getElementById('ura-base64');
+  content.addEventListener('input', () => { encoded.value = ''; });
+  fileInput.addEventListener('change', async () => {
+    encoded.value = '';
+    content.value = '';
+    const file = fileInput.files[0];
+    if (!file) { status.textContent = ''; return; }
+    if (file.size > 2000000) { status.textContent = 'Arquivo acima de 2 MB. Escolha outro CSV.'; return; }
+    try {
+      // Mantém inclusive BOM e quebras de linha para o hash do conteúdo original UTF-8.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      content.value = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+      encoded.value = btoa(binary);
+      document.getElementById('ura-filename').value = file.name;
+      status.textContent = file.name + ' carregado. Clique em Importar para gravar.';
+    } catch (_) { status.textContent = 'Não foi possível ler o arquivo. Confira se está em UTF-8.'; }
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}

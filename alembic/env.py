@@ -27,6 +27,7 @@ settings = get_settings()
 # A allowlist também impede que tabelas de relatórios fora dos prefixos conhecidos
 # sejam interpretadas pelo autogenerate como candidatas a remoção.
 MANAGED_TABLES = {
+    "ura_daily", "ura_import_runs",
     "users",
     "reports",
     "report_categories",

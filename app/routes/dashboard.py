@@ -104,6 +104,7 @@ DASHBOARD_EXCLUDED_DATABASES = {
     "performance_schema",
 }
 DASHBOARD_INTERNAL_TABLES = {
+    "ura_daily", "ura_import_runs",
     "admin_action_logs",
     "auth_logs",
     "dashboard_categories",
