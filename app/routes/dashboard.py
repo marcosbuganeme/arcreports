@@ -17,6 +17,7 @@ from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
+from app.periods import period_expression, period_params
 from app.billing_rules import Competence
 from app.config import get_settings
 from app.database import SessionLocal, get_db, local_engine
@@ -653,7 +654,7 @@ def execute_widget_aggregate(
         col_type = _get_column_type(physical_table, time_field, database_name)
         filter_expr = _period_filter_expr(quote_column(time_field), col_type)
         where_sql = f" WHERE {filter_expr}"
-        params = {"date_from": date_from, "date_to": date_to}
+        params = period_params(date_from, date_to)
     aggregate_sql = "COUNT(*)" if force_count else widget_aggregate_sql(widget)
     query = f"SELECT COALESCE({aggregate_sql}, 0) AS `value` FROM {safe_database}.{safe_table}{where_sql}"
     with local_engine.connect() as connection:
@@ -673,7 +674,7 @@ def get_source_count(db: Session | None, source: DashboardSource, data_inicio: d
         col_type = _get_column_type(physical_table, safe_time_field, database_name)
         filter_expr = _period_filter_expr(quote_column(safe_time_field), col_type)
         where_sql = f" WHERE {filter_expr}"
-        params = {"date_from": data_inicio, "date_to": data_fim}
+        params = period_params(data_inicio, data_fim)
     else:
         logger.warning(
             "Dashboard source %s (%s) has no valid temporal field; counting without period filter.",
@@ -842,7 +843,7 @@ def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) ->
         col_type = _get_column_type(physical_table, time_field, database_name)
         filter_expr = _period_filter_expr(quote_column(time_field), col_type)
         where_sql = f" WHERE {filter_expr}"
-        params = {"date_from": date_from, "date_to": date_to}
+        params = period_params(date_from, date_to)
     group_sql = f" GROUP BY {', '.join(quote_column(field) for field in group_fields)}" if group_fields else ""
     top_n = dashboard_int(str(widget.top_n), 10, 1, 100)
     query = (
@@ -1179,8 +1180,8 @@ def search_table_detail(
     search_sql, params = search_filter_sql(columns, search)
     date_sql = ""
     if date_column and date_from and date_to:
-        date_sql = f"{quote_column(date_column)} BETWEEN :date_from AND :date_to"
-        params.update({"date_from": date_from, "date_to": date_to})
+        date_sql = _period_filter_expr(quote_column(date_column), _get_column_type(table_name, date_column, settings.local_db_name))
+        params.update(period_params(date_from, date_to))
     where_sql = combine_where([search_sql, date_sql])
     order_sql = report_detail_order_sql({"columns": columns, "date_column": date_column}, sort_col, sort_dir)
     query_params = {**params, "limit": page_size, "offset": (page - 1) * page_size}
@@ -1274,10 +1275,7 @@ def temp_report_name(report_id: int, user_id: int) -> str:
 
 
 def date_period_params(date_from: date, date_to: date) -> dict:
-    return {
-        "date_from": datetime.combine(date_from, datetime_time.min),
-        "date_to": datetime.combine(date_to, datetime_time.max.replace(microsecond=0)),
-    }
+    return period_params(date_from, date_to)
 
 
 def top_level_keyword_index(sql: str, keyword: str) -> int:
@@ -1420,24 +1418,7 @@ def _get_column_type(table: str, column: str, database: str) -> str | None:
 
 
 def _period_filter_expr(column_sql: str, col_type: str | None) -> str:
-    """Gera comparação temporal nativa ou converte datas ISO/BR textuais."""
-    if col_type and "TEXT" in col_type.upper():
-        converted = (
-            "COALESCE("
-            f"STR_TO_DATE({column_sql}, {ISO_DATETIME_SECONDS_FMT}), "
-            f"STR_TO_DATE({column_sql}, {ISO_DATETIME_FMT}), "
-            f"STR_TO_DATE({column_sql}, {ISO_DATE_FMT}), "
-            f"STR_TO_DATE({column_sql}, {BRAZILIAN_DATETIME_SECONDS_FMT}), "
-            f"STR_TO_DATE({column_sql}, {BRAZILIAN_DATETIME_FMT}), "
-            f"STR_TO_DATE({column_sql}, {BRAZILIAN_DATE_FMT})"
-            ")"
-        )
-        return (
-            f"{converted} BETWEEN "
-            "STR_TO_DATE(:date_from, '%Y-%m-%d') AND "
-            "STR_TO_DATE(:date_to, '%Y-%m-%d')"
-        )
-    return f"{column_sql} BETWEEN :date_from AND :date_to"
+    return period_expression(column_sql, col_type)
 
 
 def direct_destination_period_filter_sql(

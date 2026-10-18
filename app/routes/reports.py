@@ -6,7 +6,7 @@ import re
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -18,6 +18,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.periods import period_expression
 from app.config import get_settings
 from app.database import get_db, local_engine
 from app.deletion_dependencies import delete_widgets, report_dependencies
@@ -277,7 +278,13 @@ def build_visual_report(data: dict[str, str], preview_limit: int | None = None) 
         elif operator == "lt":
             where_parts.append(f"{column_sql} < {sql_literal(value)}")
         elif operator == "between_dates":
-            where_parts.append(f"{column_sql} BETWEEN {sql_literal(value)} AND {sql_literal(value_end)}")
+            start = date.fromisoformat(value)
+            end = date.fromisoformat(value_end)
+            if start > end or end == date.max:
+                raise ValueError("Período inválido no filtro de datas.")
+            column_type = next(c.get("data_type", "") for c in columns if c["name"] == field)
+            expression = period_expression(column_sql, column_type)
+            where_parts.append(expression.replace(":date_from", sql_literal(start.isoformat())).replace(":date_to_exclusive", sql_literal((end + timedelta(days=1)).isoformat())))
         elif operator == "in_list":
             values = parse_csv_values(value)
             if not values:
