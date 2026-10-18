@@ -17,6 +17,7 @@ from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
+from app.billing_rules import Competence
 from app.config import get_settings
 from app.database import SessionLocal, get_db, local_engine
 from app.deletion_dependencies import dashboard_dependencies, delete_widgets, source_dependencies
@@ -552,7 +553,10 @@ def dashboard_default_dates() -> tuple[date, date]:
     return today.replace(month=1, day=1), today
 
 
-def dashboard_dates(date_from: str | None, date_to: str | None) -> tuple[date, date]:
+def dashboard_dates(date_from: str | None, date_to: str | None, competence: str | None = None) -> tuple[date, date]:
+    if competence:
+        period = Competence.parse(competence)
+        return period.start, period.end
     default_from, default_to = dashboard_default_dates()
     try:
         parsed_from = date.fromisoformat(date_from) if date_from else default_from
@@ -2818,6 +2822,7 @@ def dashboard_detail(dashboard_id: int, request: Request, db: Session = Depends(
         date_from, date_to = dashboard_dates(
             request.query_params.get("data_inicio") or request.query_params.get("date_from"),
             request.query_params.get("data_fim") or request.query_params.get("date_to"),
+            request.query_params.get("competencia"),
         )
     except ValueError as exc:
         date_from, date_to = dashboard_default_dates()
@@ -2836,7 +2841,7 @@ def dashboard_detail(dashboard_id: int, request: Request, db: Session = Depends(
             "active": "dashboard",
             "dashboard": current_dashboard,
             "widgets": [load_widget_data(widget, date_from, date_to) for widget in widgets],
-            "filters": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat()},
+            "filters": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "competence": request.query_params.get("competencia", "")},
             "error": error,
         },
         db,

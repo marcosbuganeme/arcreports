@@ -1,0 +1,23 @@
+from datetime import date
+
+import pytest
+
+from app.billing_rules import Competence
+
+
+@pytest.mark.parametrize("label,start,end", [
+    ("2026-10", date(2026,9,22), date(2026,10,21)),
+    ("2026-11", date(2026,10,22), date(2026,11,21)),
+    ("2027-01", date(2026,12,22), date(2027,1,21)),
+    ("2028-03", date(2028,2,22), date(2028,3,21)),
+])
+def test_competence_boundaries(label, start, end):
+    period = Competence.parse(label)
+    assert (period.start, period.end, period.label) == (start, end, label)
+    assert Competence.containing(start) == Competence.containing(end) == period
+
+
+@pytest.mark.parametrize("value", ["", "2026-13", "2026-00", "2026-1", "2026-10-01", "0000-01"])
+def test_invalid_competence(value):
+    with pytest.raises(ValueError):
+        Competence.parse(value)

@@ -18,8 +18,15 @@
 
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 
+<form method="get" action="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" class="d-flex flex-wrap align-items-end gap-2 mb-3">
+  <div><label for="competencia" class="form-label">Competência contratual (dia 22 ao dia 21)</label>
+  <input id="competencia" type="month" name="competencia" value="{{ filters.competence }}" class="form-control" required></div>
+  <button class="btn btn-primary" type="submit">Aplicar competência</button>
+  <span class="text-muted">Período aplicado: {{ filters.date_from }} a {{ filters.date_to }}</span>
+</form>
+
 <form method="get" action="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" style="display:flex; align-items:center; gap:12px; padding:8px 0; margin-bottom:1rem; border-bottom:0.5px solid var(--color-border-tertiary)">
-  <span style="font-size:12px; color:var(--color-text-tertiary)">Período</span>
+  <span style="font-size:12px; color:var(--color-text-tertiary)">Período livre</span>
   <input type="date" name="data_inicio" value="{{ filters.date_from }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
   <span style="font-size:12px; color:var(--color-text-tertiary)">até</span>
   <input type="date" name="data_fim" value="{{ filters.date_to }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
