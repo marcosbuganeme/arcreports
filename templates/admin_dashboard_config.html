@@ -7,6 +7,23 @@
   </select>
 </div>
 {% endmacro %}
+{% macro gauge_fields(prefix, widget=none) %}
+<div data-config-field="gauge_options">
+  <label class="form-label" for="{{ prefix }}-mode">Operação do medidor</label>
+  <select class="form-select" id="{{ prefix }}-mode" name="gauge_mode">
+    {% for value, label in [('legacy','Partição legada (contagem)'),('ratio','Razão: soma do numerador ÷ soma do denominador × 100'),('value','Resultado numérico agregado')] %}
+    <option value="{{ value }}" {% if widget and widget.gauge_mode == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <label class="form-label" for="{{ prefix }}-direction">Direção da meta</label>
+  <select class="form-select" id="{{ prefix }}-direction" name="goal_direction">
+    <option value="minimum" {% if not widget or widget.goal_direction == 'minimum' %}selected{% endif %}>Mínima (≥)</option>
+    <option value="maximum" {% if widget and widget.goal_direction == 'maximum' %}selected{% endif %}>Máxima (≤)</option>
+  </select>
+  {{ field_select(prefix ~ '-denominator', 'denominator_field', widget.denominator_field if widget else none, widget.source_id if widget else none, 'Campo denominador (razão)') }}
+  <small>Razão usa campos numéricos da mesma fonte e período. Resultado numérico usa a agregação escolhida. Configure o campo de data. A fonte B pertence à partição legada.</small>
+</div>
+{% endmacro %}
 {% macro dashboard_category_checks(prefix, selected_categories) %}
 {% set selected_ids = selected_categories | map(attribute='id') | list %}
 <div class="dashboard-category-checks">
@@ -391,9 +408,10 @@
           <option value="ano_anterior">Mesmo período ano anterior</option>
         </select>
       </div>
+      {{ gauge_fields("new-gauge") }}
       <div data-config-field="meta_gauge">
-        <label class="form-label" for="new-meta-gauge">Meta (%)</label>
-        <input class="form-control" id="new-meta-gauge" name="meta_gauge" type="number" min="0" max="100" step="0.1" placeholder="Ex: 90">
+        <label class="form-label" for="new-meta-gauge">Meta (mesma unidade do resultado)</label>
+        <input class="form-control" id="new-meta-gauge" name="meta_gauge" type="number" min="0" max="1000000000000" step="any" placeholder="Ex: 90">
       </div>
       <div>
         <label class="form-label" for="new-order">Ordem</label>
@@ -526,9 +544,10 @@
             <option value="ano_anterior" {% if widget.comparar_com == 'ano_anterior' %}selected{% endif %}>Mesmo período ano anterior</option>
           </select>
         </div>
+        {{ gauge_fields("gauge-" ~ widget.id, widget) }}
         <div data-config-field="meta_gauge">
-          <label class="form-label" for="widget-meta-gauge-{{ widget.id }}">Meta (%)</label>
-          <input class="form-control" id="widget-meta-gauge-{{ widget.id }}" name="meta_gauge" type="number" min="0" max="100" step="0.1" placeholder="Ex: 90" value="{{ widget.meta_gauge or '' }}">
+          <label class="form-label" for="widget-meta-gauge-{{ widget.id }}">Meta (mesma unidade do resultado)</label>
+          <input class="form-control" id="widget-meta-gauge-{{ widget.id }}" name="meta_gauge" type="number" min="0" max="1000000000000" step="any" placeholder="Ex: 90" value="{{ widget.meta_gauge if widget.meta_gauge is not none else '' }}">
         </div>
         <div>
           <label class="form-label" for="widget-order-{{ widget.id }}">Ordem</label>
@@ -941,7 +960,7 @@ document.addEventListener("DOMContentLoaded", function() {
     form.querySelectorAll("[data-config-field='label_field'], [data-config-field='series_field'], [data-config-field='top_n']").forEach((field) => field.hidden = compactFieldsHidden);
     form.querySelectorAll("[data-config-field='icone']").forEach((field) => field.hidden = !showIcon);
     form.querySelectorAll("[data-config-field='comparar_com']").forEach((field) => field.hidden = !showCompare);
-    form.querySelectorAll("[data-config-field='meta_gauge']").forEach((field) => field.hidden = !showGaugeMeta);
+    form.querySelectorAll("[data-config-field='meta_gauge'], [data-config-field='gauge_options']").forEach((field) => field.hidden = !showGaugeMeta);
     form.querySelectorAll("[data-config-field='source_id_b'], [data-config-field='cor_secundaria']").forEach((field) => {
       field.hidden = !showSourceB;
       field.style.display = showSourceB ? "" : "none";

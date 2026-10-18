@@ -17,6 +17,7 @@ from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
+from app.metrics import measure
 from app.periods import period_expression, period_params
 from app.billing_rules import Competence, previous_competence
 from app.config import get_settings
@@ -743,45 +744,50 @@ def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: s
     result["rows"] = [{"label": "Total", "value": current_value}]
 
 
-def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | None, date_from: date, date_to: date) -> None:
-    if widget.source_id_b and widget.source_b:
-        total_a = get_source_count(settings, widget.source, date_from, date_to)
-        total_b = get_source_count(settings, widget.source_b, date_from, date_to)
-        universo = total_a + total_b
-        percentual = (total_a / universo * 100) if universo else 0.0
-        status_value = "ok"
-        if widget.meta_gauge is not None:
-            if percentual >= widget.meta_gauge:
-                status_value = "ok"
-            elif percentual >= widget.meta_gauge * 0.85:
-                status_value = "atencao"
-            else:
-                status_value = "critico"
-        result["percentual"] = percentual
-        result["meta_gauge"] = widget.meta_gauge
-        result["status"] = status_value
-        result["total_a"] = total_a
-        result["total_b"] = total_b
-        result["universo"] = universo
-        result["rows"] = [{"label": widget.source.name, "value": total_a}, {"label": widget.source_b.name, "value": total_b}]
-        return
+def execute_gauge_values(widget, time_field, date_from, date_to):
+    if not time_field:
+        raise ValueError("Medidores numéricos exigem um campo de data para aplicar o período.")
+    columns = dashboard_column_names(widget.source)
+    fields = [widget.value_field] + ([widget.denominator_field] if widget.gauge_mode == "ratio" else [])
+    if any(not field or field not in columns for field in fields):
+        raise ValueError("Informe os campos numéricos do medidor.")
+    database, table = dashboard_source_parts(widget.source.source_table)
+    for field in fields:
+        kind = (_get_column_type(table, field, database) or "").upper()
+        if not any(token in kind for token in ("INT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL")):
+            raise ValueError("O campo do medidor deve ter tipo numérico.")
+    aggregation = "SUM" if widget.gauge_mode == "ratio" else widget.aggregation.upper()
+    values = [f"{aggregation}({quote_column(field)}) AS v{i}" for i, field in enumerate(fields)]
+    expression = _period_filter_expr(quote_column(time_field), _get_column_type(table, time_field, database))
+    sql = f"SELECT {', '.join(values)} FROM {quote_identifier(database)}.{quote_identifier(table)} WHERE {expression}"
+    with local_engine.connect() as connection:
+        apply_query_timeout(connection)
+        return tuple(connection.execute(text(sql), period_params(date_from, date_to)).one())
 
-    total = execute_widget_aggregate(widget, None, force_count=True)
-    filtered = execute_widget_aggregate(widget, time_field, date_from, date_to, force_count=True) if time_field else total
-    percentual = (filtered / total * 100) if total else 0
-    status_value = "ok"
-    if widget.meta_gauge is not None:
-        if percentual >= widget.meta_gauge:
-            status_value = "ok"
-        elif percentual >= widget.meta_gauge * 0.85:
-            status_value = "atencao"
-        else:
-            status_value = "critico"
-    result["total"] = total
-    result["filtrado"] = filtered
-    result["percentual"] = percentual
-    result["status"] = status_value
-    result["rows"] = [{"label": "Filtrado", "value": filtered}, {"label": "Total", "value": total}]
+
+def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | None, date_from: date, date_to: date) -> None:
+    mode = widget.gauge_mode or "legacy"
+    if mode != "legacy":
+        values = execute_gauge_values(widget, time_field, date_from, date_to)
+        numerator, denominator = values[0], values[1] if mode == "ratio" else None
+        result["rows"] = [{"label": "Numerador" if mode == "ratio" else "Resultado", "value": numerator}]
+        if mode == "ratio":
+            result["rows"].append({"label": "Denominador", "value": denominator})
+    elif widget.source_id_b and widget.source_b:
+        numerator = get_source_count(settings, widget.source, date_from, date_to)
+        total_b = get_source_count(settings, widget.source_b, date_from, date_to)
+        denominator = numerator + total_b
+        result.update(total_a=numerator, total_b=total_b, universo=denominator)
+        result["rows"] = [{"label": widget.source.name, "value": numerator}, {"label": widget.source_b.name, "value": total_b}]
+    else:
+        denominator = execute_widget_aggregate(widget, None, force_count=True)
+        numerator = execute_widget_aggregate(widget, time_field, date_from, date_to, force_count=True) if time_field else denominator
+        result.update(total=denominator, filtrado=numerator)
+        result["rows"] = [{"label": "Filtrado", "value": numerator}, {"label": "Total", "value": denominator}]
+    metric = measure(numerator, denominator, mode="value" if mode == "value" else "ratio",
+                     goal=widget.meta_gauge, direction=widget.goal_direction or "minimum")
+    result.update(metric=metric, percentual=float(metric["value"]) if metric["value"] is not None else None,
+                  status="sem_amostra" if metric["value"] is None else "ok" if metric["meets_goal"] else "critico" if metric["meets_goal"] is False else "sem_meta")
 
 
 def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) -> dict:
@@ -827,7 +833,7 @@ def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) ->
                 apply_widget_gauge(result, widget, time_field, date_from, date_to)
             else:
                 apply_widget_comparison(result, widget, time_field, date_from, date_to)
-        except SQLAlchemyError as exc:
+        except (SQLAlchemyError, ValueError) as exc:
             result["error"] = f"Nao foi possivel consultar a fonte local: {exc}"
         return result
 
@@ -2266,20 +2272,30 @@ def apply_dashboard_widget(
     fields = {
         "label_field": clean_dashboard_text(data.get("label_field")),
         "value_field": clean_dashboard_text(data.get("value_field")),
+        "denominator_field": clean_dashboard_text(data.get("denominator_field")),
         "series_field": clean_dashboard_text(data.get("series_field")),
         "time_field": clean_dashboard_text(data.get("time_field")),
     }
     invalid_fields = [value for value in fields.values() if value and value not in columns]
     if invalid_fields:
         raise ValueError(f"Campo nao disponivel na fonte: {invalid_fields[0]}.")
-    aggregation = "count" if widget_type == "gauge" else data.get("aggregation", "count").strip().lower()
+    gauge_mode = data.get("gauge_mode", "legacy")
+    goal_direction = data.get("goal_direction", "minimum")
+    if gauge_mode not in {"legacy", "ratio", "value"} or goal_direction not in {"minimum", "maximum"}:
+        raise ValueError("Operação ou direção do medidor inválida.")
+    if widget_type == "gauge" and gauge_mode != "legacy":
+        if not fields["time_field"] and not source.default_time_field:
+            raise ValueError("Selecione o campo de data do medidor.")
+        if not fields["value_field"] or (gauge_mode == "ratio" and not fields["denominator_field"]):
+            raise ValueError("Informe os campos do medidor.")
+    aggregation = "count" if widget_type == "gauge" and gauge_mode == "legacy" else "sum" if widget_type == "gauge" and gauge_mode == "ratio" else data.get("aggregation", "count").strip().lower()
     if aggregation not in DASHBOARD_AGGREGATIONS:
         raise ValueError("Agregacao do widget invalida.")
     if aggregation != "count" and not fields["value_field"]:
         raise ValueError("Campo valor e obrigatorio para esta agregacao.")
 
     widget.source = source
-    widget.source_b = source_b if widget_type in {"gauge", "comparativo"} else None
+    widget.source_b = source_b if widget_type == "comparativo" or (widget_type == "gauge" and gauge_mode == "legacy") else None
     widget.title = clean_dashboard_text(data.get("title")) or f"Widget {source.name}"
     widget.widget_type = widget_type
     widget.label_field = fields["label_field"]
@@ -2294,7 +2310,10 @@ def apply_dashboard_widget(
     widget.icone = icon if icon in DASHBOARD_ICONS else None
     compare = clean_dashboard_text(data.get("comparar_com"))
     widget.comparar_com = compare if compare in DASHBOARD_COMPARE_PERIODS else None
-    widget.meta_gauge = dashboard_float(data.get("meta_gauge"), 0, 100)
+    widget.gauge_mode = gauge_mode
+    widget.goal_direction = goal_direction
+    widget.denominator_field = fields["denominator_field"]
+    widget.meta_gauge = dashboard_float(data.get("meta_gauge"), 0, 1000000000000 if gauge_mode == "value" else 100)
     secondary_color = clean_dashboard_text(data.get("cor_secundaria"))
     if widget_type in {"gauge", "comparativo"}:
         widget.cor_secundaria = secondary_color if secondary_color in DASHBOARD_COLORS else "red"
@@ -2401,6 +2420,9 @@ def duplicate_admin_dashboard(dashboard_id: int, request: Request, db: Session =
             icone=widget.icone,
             comparar_com=widget.comparar_com,
             meta_gauge=widget.meta_gauge,
+            gauge_mode=widget.gauge_mode,
+            goal_direction=widget.goal_direction,
+            denominator_field=widget.denominator_field,
             cor_secundaria=widget.cor_secundaria,
             sort_order=widget.sort_order,
             size=widget.size,

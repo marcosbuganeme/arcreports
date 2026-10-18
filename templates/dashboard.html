@@ -88,58 +88,23 @@
             {% endif %}
           </div>
           {% elif widget.widget_type == 'gauge' %}
-          <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0">
-            <svg viewBox="0 0 160 90" style="width:160px; height:90px">
-              {% if widget.source_id_b %}
-              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="{{ cor_widget }}" stroke-width="14" stroke-linecap="round" opacity="0.25"/>
-              {% else %}
-              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="#e5e5e5" stroke-width="14" stroke-linecap="round"/>
-              {% endif %}
-              <path id="gauge-arc-{{ widget.id }}" fill="none" stroke="{{ cor_widget if widget.source_id_b else cor_status }}" stroke-width="14" stroke-linecap="round"/>
-              <text x="80" y="72" text-anchor="middle" font-size="22" font-weight="500" fill="var(--color-text-primary)">{{ widget_data.percentual | round(1) }}%</text>
-              {% if widget.meta_gauge %}
-              <text x="80" y="84" text-anchor="middle" font-size="9" fill="var(--color-text-tertiary)">meta: {{ widget.meta_gauge | int }}%</text>
-              {% endif %}
-            </svg>
-            <script>
-            (function() {
-              var pct = Math.max(0, Math.min(100, {{ widget_data.percentual }}));
-              var r = 60, cx = 80, cy = 80;
-              var start = Math.PI;
-              var angle = start + (pct / 100) * Math.PI;
-              var x = cx + r * Math.cos(angle);
-              var y = cy + r * Math.sin(angle);
-              var large = angle - start > Math.PI ? 1 : 0;
-              var d = "M20,80 A60,60 0 " + large + ",1 " + x.toFixed(1) + "," + y.toFixed(1);
-              document.getElementById("gauge-arc-{{ widget.id }}").setAttribute("d", d);
-            })();
-            </script>
-            {% if widget.meta_gauge %}
-            <div style="font-size:11px; margin-top:4px; color:{% if widget_data.status == 'ok' %}var(--color-text-success){% elif widget_data.status == 'atencao' %}var(--color-text-warning){% else %}var(--color-text-danger){% endif %}">
-              {% if widget_data.status == "ok" %}Dentro da meta{% elif widget_data.status == "atencao" %}Atenção - próximo do limite{% else %}Abaixo da meta{% endif %}
+          <div class="text-center py-3">
+            {% if widget_data.metric.state == 'no_sample' %}
+            <p class="mb-1">Sem amostra</p>
+            <small>Não há denominador válido ou registros no período.</small>
+            {% else %}
+            <strong class="fs-2">{{ widget_data.metric.value | round(2) }}{{ '%' if widget.gauge_mode != 'value' else '' }}</strong>
+            {% if widget.gauge_mode != 'value' %}
+            <div class="progress my-2" role="progressbar" aria-label="Resultado de {{ widget.title }}" aria-valuenow="{{ widget_data.percentual }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar" style="width:{{ [100, [0, widget_data.percentual] | max] | min }}%"></div>
             </div>
             {% endif %}
-            {% if widget_data.total_a is defined and widget_data.total_b is defined %}
-            <div style="display:flex; justify-content:center; gap:16px; margin-top:4px">
-              <div style="text-align:center">
-                <div style="color:{{ cor_widget }}; font-size:18px; font-weight:500">
-                  {{ widget_data.total_a | int | format_number }}
-                </div>
-                <div style="font-size:10px; color:var(--color-text-tertiary)">
-                  {{ widget.source.name }}
-                </div>
-              </div>
-              <div style="width:0.5px; background:var(--color-border-tertiary); align-self:stretch"></div>
-              <div style="text-align:center">
-                <div style="color:{{ cor_secundaria }}; font-size:18px; font-weight:500">
-                  {{ widget_data.total_b | int | format_number }}
-                </div>
-                <div style="font-size:10px; color:var(--color-text-tertiary)">
-                  {{ widget.source_b.name }}
-                </div>
-              </div>
-            </div>
+            {% if widget_data.metric.goal is not none %}
+            <p class="mb-1">Meta {{ widget_data.metric.symbol }} {{ widget_data.metric.goal }}{{ '%' if widget.gauge_mode != 'value' else '' }}</p>
+            <p>{{ 'Dentro da meta' if widget_data.metric.meets_goal else 'Fora da meta' }}</p>
+            {% else %}<p>Meta não configurada</p>{% endif %}
             {% endif %}
+            {% for row in widget_data.rows %}<div><small>{{ row.label }}: {{ row.value if row.value is not none else 'sem amostra' }}</small></div>{% endfor %}
           </div>
           {% elif widget.widget_type == 'comparativo' %}
           <div style="display:flex; align-items:center; gap:16px; padding:8px 0">
