@@ -149,8 +149,8 @@
             </div>
             <div style="width:0.5px; align-self:stretch; background:var(--color-border-tertiary)"></div>
             <div style="display:flex; flex-direction:column; gap:4px">
-              <span style="font-size:11px; color:var(--color-text-tertiary)">{% if widget_data.label_b is defined %}{{ widget_data.label_b }}{% elif widget.comparar_com == "ano_anterior" %}Mesmo período ano anterior{% else %}Mês anterior{% endif %}</span>
-              <span style="font-size:28px; font-weight:500; color:{{ cor_secundaria }}">{{ (widget_data.valor_comparativo or 0) | int | format_number }}</span>
+              <span style="font-size:11px; color:var(--color-text-tertiary)">{% if widget_data.label_b is defined %}{{ widget_data.label_b }}{% elif widget.comparar_com == "competencia_anterior" %}Competência anterior{% elif widget.comparar_com == "ano_anterior" %}Mesmo período ano anterior{% else %}Mês anterior{% endif %}</span>
+              <span style="font-size:28px; font-weight:500; color:{{ cor_secundaria }}">{% if widget_data.comparison_state is defined %}{{ widget_data.comparison_state }}{% else %}{{ (widget_data.valor_comparativo or 0) | int | format_number }}{% endif %}</span>
             </div>
             {% if widget_data.variacao_pct is not none %}
             <div style="padding:4px 10px; border-radius:20px; font-size:12px; font-weight:500; align-self:center; background:{% if widget_data.direcao == 'up' %}var(--color-background-success){% elif widget_data.direcao == 'down' %}var(--color-background-danger){% else %}var(--color-background-secondary){% endif %}; color:{% if widget_data.direcao == 'up' %}var(--color-text-success){% elif widget_data.direcao == 'down' %}var(--color-text-danger){% else %}var(--color-text-secondary){% endif %}">

@@ -40,3 +40,11 @@ class Competence:
             return cls(value.year, value.month)
         next_month = (value.replace(day=1) + timedelta(days=32)).replace(day=1)
         return cls(next_month.year, next_month.month)
+
+
+CONTRACT_START = date(2026, 9, 22)
+
+
+def previous_competence(period: Competence) -> Competence | None:
+    previous = Competence.containing(period.start - timedelta(days=1))
+    return previous if previous.start >= CONTRACT_START else None

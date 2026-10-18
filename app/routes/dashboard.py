@@ -18,7 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.periods import period_expression, period_params
-from app.billing_rules import Competence
+from app.billing_rules import Competence, previous_competence
 from app.config import get_settings
 from app.database import SessionLocal, get_db, local_engine
 from app.deletion_dependencies import dashboard_dependencies, delete_widgets, source_dependencies
@@ -133,7 +133,7 @@ DASHBOARD_COLORS = {"blue", "green", "amber", "red", "violet", "slate"}
 DASHBOARD_SIZES = {"pequeno", "medio", "grande", "total"}
 DASHBOARD_BULK_ACTIONS = {"activate", "deactivate", "delete", "delete_all"}
 DESTRUCTIVE_DASHBOARD_BULK_ACTIONS = {"delete", "delete_all"}
-DASHBOARD_COMPARE_PERIODS = {"mes_anterior", "ano_anterior"}
+DASHBOARD_COMPARE_PERIODS = {"mes_anterior", "ano_anterior", "competencia_anterior"}
 DASHBOARD_ICONS = {
     "ti-ticket",
     "ti-check",
@@ -570,6 +570,12 @@ def dashboard_dates(date_from: str | None, date_to: str | None, competence: str 
 
 
 def calcular_periodo_comparativo(data_inicio: date, data_fim: date, comparar_com: str | None) -> tuple[date, date] | None:
+    if comparar_com == "competencia_anterior":
+        current = Competence.containing(data_fim)
+        if (data_inicio, data_fim) != (current.start, current.end):
+            return None
+        previous = previous_competence(current)
+        return (previous.start, previous.end) if previous else None
     if comparar_com == "mes_anterior":
         primeiro_mes_atual = data_inicio.replace(day=1)
         fim_mes_anterior = primeiro_mes_atual - timedelta(days=1)
@@ -715,6 +721,8 @@ def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: s
     variation = None
     direction = "neutral"
     compare_period = calcular_periodo_comparativo(date_from, date_to, widget.comparar_com)
+    if widget.comparar_com == "competencia_anterior" and compare_period is None:
+        result["comparison_state"] = "Sem base contratual para comparação neste período."
     if compare_period:
         compare_value = execute_widget_aggregate(widget, time_field, compare_period[0], compare_period[1])
         if compare_value:

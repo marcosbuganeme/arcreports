@@ -21,3 +21,10 @@ def test_competence_boundaries(label, start, end):
 def test_invalid_competence(value):
     with pytest.raises(ValueError):
         Competence.parse(value)
+
+
+def test_previous_competence_and_first_month():
+    from app.routes.dashboard import calcular_periodo_comparativo
+    assert calcular_periodo_comparativo(date(2026,10,22), date(2026,11,21), 'competencia_anterior') == (date(2026,9,22), date(2026,10,21))
+    assert calcular_periodo_comparativo(date(2026,9,22), date(2026,10,21), 'competencia_anterior') is None
+    assert calcular_periodo_comparativo(date(2026,11,1), date(2026,11,21), 'competencia_anterior') is None

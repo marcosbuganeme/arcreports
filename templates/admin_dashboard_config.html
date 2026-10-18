@@ -386,6 +386,7 @@
         <label class="form-label" for="new-comparar-com">Comparar com</label>
         <select class="form-select" id="new-comparar-com" name="comparar_com">
           <option value="">Sem comparativo</option>
+          <option value="competencia_anterior">Competência contratual anterior</option>
           <option value="mes_anterior">Mês anterior</option>
           <option value="ano_anterior">Mesmo período ano anterior</option>
         </select>
@@ -520,6 +521,7 @@
           <label class="form-label" for="widget-comparar-com-{{ widget.id }}">Comparar com</label>
           <select class="form-select" id="widget-comparar-com-{{ widget.id }}" name="comparar_com">
             <option value="">Sem comparativo</option>
+            <option value="competencia_anterior" {% if widget.comparar_com == 'competencia_anterior' %}selected{% endif %}>Competência contratual anterior</option>
             <option value="mes_anterior" {% if widget.comparar_com == 'mes_anterior' %}selected{% endif %}>Mês anterior</option>
             <option value="ano_anterior" {% if widget.comparar_com == 'ano_anterior' %}selected{% endif %}>Mesmo período ano anterior</option>
           </select>
