@@ -102,7 +102,7 @@
             {% endif %}
             {% if widget_data.metric.goal is not none %}
             <p class="mb-1">Meta {{ widget_data.metric.symbol }} {{ widget_data.metric.goal }}{{ '%' if widget.gauge_mode != 'value' else '' }}</p>
-            <p>{{ 'Dentro da meta' if widget_data.metric.meets_goal else 'Fora da meta' }}</p>
+            <p>{{ 'Dentro da meta' if widget_data.metric.meets_goal else ('Atenção: próximo do limite' if widget_data.status == 'atencao' else 'Fora da meta') }}</p>
             {% else %}<p>Meta não configurada</p>{% endif %}
             {% endif %}
             {% for row in widget_data.rows %}<div><small>{{ row.label }}: {{ row.value if row.value is not none else 'sem amostra' }}</small></div>{% endfor %}

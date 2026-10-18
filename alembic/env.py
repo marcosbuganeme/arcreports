@@ -10,7 +10,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import get_settings
-from app.models import Base
+from app.models import CONTRACT_INTERNAL_TABLES, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -27,7 +27,7 @@ settings = get_settings()
 # A allowlist também impede que tabelas de relatórios fora dos prefixos conhecidos
 # sejam interpretadas pelo autogenerate como candidatas a remoção.
 MANAGED_TABLES = {
-    "ura_daily", "ura_import_runs",
+    *CONTRACT_INTERNAL_TABLES,
     "users",
     "reports",
     "report_categories",

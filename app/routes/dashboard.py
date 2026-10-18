@@ -5,6 +5,7 @@ import time
 import re
 from collections import defaultdict
 from datetime import date, datetime, time as datetime_time, timedelta
+from decimal import Decimal
 from io import BytesIO
 from threading import Lock
 from typing import Optional
@@ -19,11 +20,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.metrics import measure
 from app.periods import period_expression, period_params
-from app.billing_rules import Competence, previous_competence
+from app.billing_rules import CONTRACT_START, Competence, contract_competence, current_competence, previous_competence
 from app.config import get_settings
 from app.database import SessionLocal, get_db, local_engine
 from app.deletion_dependencies import dashboard_dependencies, delete_widgets, source_dependencies
-from app.models import AdminActionLog, Dashboard, DashboardSource, DashboardWidget, ConnectorRun, ConnectorSyncTable, Report, ReportCategory, ReportExecution, TempReportResult
+from app.models import CONTRACT_INTERNAL_TABLES, AdminActionLog, Dashboard, DashboardSource, DashboardWidget, ConnectorRun, ConnectorSyncTable, Report, ReportCategory, ReportExecution, TempReportResult
 from app.reporting import (
     CONTROL_COLUMN_ALIASES,
     IDENTIFIER_RE,
@@ -104,7 +105,7 @@ DASHBOARD_EXCLUDED_DATABASES = {
     "performance_schema",
 }
 DASHBOARD_INTERNAL_TABLES = {
-    "ura_daily", "ura_import_runs",
+    *CONTRACT_INTERNAL_TABLES,
     "admin_action_logs",
     "auth_logs",
     "dashboard_categories",
@@ -552,15 +553,17 @@ def dashboard_ajax_error(request: Request, message: str, status_code: int = 400)
 
 
 def dashboard_default_dates() -> tuple[date, date]:
-    today = date.today()
-    return today.replace(month=1, day=1), today
+    period = current_competence()
+    return period.start, period.end
 
 
 def dashboard_dates(date_from: str | None, date_to: str | None, competence: str | None = None) -> tuple[date, date]:
     if competence:
-        period = Competence.parse(competence)
+        period = contract_competence(competence)
         return period.start, period.end
     default_from, default_to = dashboard_default_dates()
+    if not date_from and not date_to:
+        return default_from, default_to
     try:
         parsed_from = date.fromisoformat(date_from) if date_from else default_from
         parsed_to = date.fromisoformat(date_to) if date_to else default_to
@@ -569,6 +572,11 @@ def dashboard_dates(date_from: str | None, date_to: str | None, competence: str 
     if parsed_from > parsed_to:
         raise ValueError("Data inicial do Dashboard deve ser menor ou igual a data final.")
     return parsed_from, parsed_to
+
+
+def competence_label(date_from: date, date_to: date) -> str:
+    period = Competence.containing(date_to)
+    return period.label if (period.start, period.end) == (date_from, date_to) and period.start >= CONTRACT_START else ""
 
 
 def calcular_periodo_comparativo(data_inicio: date, data_fim: date, comparar_com: str | None) -> tuple[date, date] | None:
@@ -724,7 +732,10 @@ def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: s
     direction = "neutral"
     compare_period = calcular_periodo_comparativo(date_from, date_to, widget.comparar_com)
     if widget.comparar_com == "competencia_anterior" and compare_period is None:
-        result["comparison_state"] = "Sem base contratual para comparação neste período."
+        result["comparison_state"] = (
+            "Sem competência anterior no contrato." if competence_label(date_from, date_to)
+            else "Selecione uma competência contratual (22 a 21) para comparar."
+        )
     if compare_period:
         compare_value = execute_widget_aggregate(widget, time_field, compare_period[0], compare_period[1])
         if compare_value:
@@ -760,15 +771,26 @@ def execute_gauge_values(widget, time_field, date_from, date_to):
     aggregation = "SUM" if widget.gauge_mode == "ratio" else widget.aggregation.upper()
     values = [f"{aggregation}({quote_column(field)}) AS v{i}" for i, field in enumerate(fields)]
     expression = _period_filter_expr(quote_column(time_field), _get_column_type(table, time_field, database))
-    sql = f"SELECT {', '.join(values)} FROM {quote_identifier(database)}.{quote_identifier(table)} WHERE {expression}"
+    sql = f"SELECT COUNT(*) AS n, {', '.join(values)} FROM {quote_identifier(database)}.{quote_identifier(table)} WHERE {expression}"
     with local_engine.connect() as connection:
         apply_query_timeout(connection)
-        return tuple(connection.execute(text(sql), period_params(date_from, date_to)).one())
+        rows, *values = connection.execute(text(sql), period_params(date_from, date_to)).one()
+    if not rows:
+        return tuple(None for _ in values)
+    return tuple(values)
 
 
 def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | None, date_from: date, date_to: date) -> None:
     mode = widget.gauge_mode or "legacy"
-    if mode != "legacy":
+    if mode == "ratio_sources":
+        if not (widget.source_id_b and widget.source_b):
+            raise ValueError("A razão entre fontes exige a fonte B (denominador).")
+        numerator = get_source_count(settings, widget.source, date_from, date_to)
+        denominator = get_source_count(settings, widget.source_b, date_from, date_to)
+        result.update(total_a=numerator, total_b=denominator)
+        result["rows"] = [{"label": f"Numerador: {widget.source.name}", "value": numerator},
+                          {"label": f"Denominador: {widget.source_b.name}", "value": denominator}]
+    elif mode != "legacy":
         values = execute_gauge_values(widget, time_field, date_from, date_to)
         numerator, denominator = values[0], values[1] if mode == "ratio" else None
         result["rows"] = [{"label": "Numerador" if mode == "ratio" else "Resultado", "value": numerator}]
@@ -787,8 +809,17 @@ def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | 
         result["rows"] = [{"label": "Filtrado", "value": numerator}, {"label": "Total", "value": denominator}]
     metric = measure(numerator, denominator, mode="value" if mode == "value" else "ratio",
                      goal=widget.meta_gauge, direction=widget.goal_direction or "minimum")
-    result.update(metric=metric, percentual=float(metric["value"]) if metric["value"] is not None else None,
-                  status="sem_amostra" if metric["value"] is None else "ok" if metric["meets_goal"] else "critico" if metric["meets_goal"] is False else "sem_meta")
+    if metric["value"] is None:
+        status_value = "sem_amostra"
+    elif metric["meets_goal"] is None:
+        status_value = "sem_meta"
+    elif metric["meets_goal"]:
+        status_value = "ok"
+    elif mode == "legacy" and metric["direction"] == "minimum" and metric["value"] >= metric["goal"] * Decimal("0.85"):
+        status_value = "atencao"
+    else:
+        status_value = "critico"
+    result.update(metric=metric, percentual=float(metric["value"]) if metric["value"] is not None else None, status=status_value)
 
 
 def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) -> dict:
@@ -2282,21 +2313,23 @@ def apply_dashboard_widget(
         raise ValueError(f"Campo nao disponivel na fonte: {invalid_fields[0]}.")
     gauge_mode = data.get("gauge_mode", "legacy")
     goal_direction = data.get("goal_direction", "minimum")
-    if gauge_mode not in {"legacy", "ratio", "value"} or goal_direction not in {"minimum", "maximum"}:
+    if gauge_mode not in {"legacy", "ratio", "ratio_sources", "value"} or goal_direction not in {"minimum", "maximum"}:
         raise ValueError("Operação ou direção do medidor inválida.")
-    if widget_type == "gauge" and gauge_mode != "legacy":
+    if widget_type == "gauge" and gauge_mode == "ratio_sources" and not source_b:
+        raise ValueError("Selecione a fonte B do denominador da razão entre fontes.")
+    if widget_type == "gauge" and gauge_mode in {"ratio", "value"}:
         if not fields["time_field"] and not source.default_time_field:
             raise ValueError("Selecione o campo de data do medidor.")
         if not fields["value_field"] or (gauge_mode == "ratio" and not fields["denominator_field"]):
             raise ValueError("Informe os campos do medidor.")
-    aggregation = "count" if widget_type == "gauge" and gauge_mode == "legacy" else "sum" if widget_type == "gauge" and gauge_mode == "ratio" else data.get("aggregation", "count").strip().lower()
+    aggregation = "count" if widget_type == "gauge" and gauge_mode in {"legacy", "ratio_sources"} else "sum" if widget_type == "gauge" and gauge_mode == "ratio" else data.get("aggregation", "count").strip().lower()
     if aggregation not in DASHBOARD_AGGREGATIONS:
         raise ValueError("Agregacao do widget invalida.")
     if aggregation != "count" and not fields["value_field"]:
         raise ValueError("Campo valor e obrigatorio para esta agregacao.")
 
     widget.source = source
-    widget.source_b = source_b if widget_type == "comparativo" or (widget_type == "gauge" and gauge_mode == "legacy") else None
+    widget.source_b = source_b if widget_type == "comparativo" or (widget_type == "gauge" and gauge_mode in {"legacy", "ratio_sources"}) else None
     widget.title = clean_dashboard_text(data.get("title")) or f"Widget {source.name}"
     widget.widget_type = widget_type
     widget.label_field = fields["label_field"]
@@ -2853,7 +2886,7 @@ def dashboard_detail(dashboard_id: int, request: Request, db: Session = Depends(
             "active": "dashboard",
             "dashboard": current_dashboard,
             "widgets": [load_widget_data(widget, date_from, date_to) for widget in widgets],
-            "filters": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "competence": request.query_params.get("competencia", "")},
+            "filters": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "competence": competence_label(date_from, date_to)},
             "error": error,
         },
         db,

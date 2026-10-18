@@ -3,7 +3,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='contract.css') }}">
 <h1>Apuração contratual</h1>
 <p>Contrato iniciado em 22/09/2026. Regras aplicadas à competência selecionada.</p>
-{% if imported_run %}<div class="alert alert-success" role="status">Importação #{{ imported_run.id }} concluída: {{ imported_run.inserted_count }} novos registros e {{ imported_run.unchanged_count }} já existentes. Nenhum registro duplicado.</div>{% endif %}
+{% if imported_run %}<div class="alert alert-success" role="status">Importação #{{ imported_run.id }} concluída: {{ imported_run.inserted_count }} novos registros, {{ imported_run.unchanged_count }} já existentes e {{ imported_run.replaced_count }} substituídos{% if imported_run.reason %} (justificativa: {{ imported_run.reason }}){% endif %}. Nenhum registro duplicado.</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 <form method="get" action="/admin/contract" class="card card-body mb-3 contract-controls">
   <label for="contract-project">Projeto URA</label>
@@ -22,7 +22,10 @@
   <label for="contract-points" class="mt-3">Pontos-base já apurados</label>
   <input id="contract-points" class="form-control" type="number" name="pontos_base" min="0" max="1000000000000" step="any" value="{{ base_points if base_points is defined else '0' }}" aria-describedby="points-help">
   <small id="points-help">Simulação: informe somente uma pontuação-base conhecida. Não define pontos por desvio ou arredondamento contratual.</small>
+  <label for="contract-cut" class="mt-3">Corte da apuração (horário de Brasília; vazio = agora ou fim da competência)</label>
+  <input id="contract-cut" class="form-control" type="datetime-local" name="corte" value="{{ apuracao.cut.strftime('%Y-%m-%dT%H:%M') if apuracao else '' }}">
   <button class="btn btn-primary mt-3" type="submit">Apurar competência</button>
+  <a class="btn btn-outline-secondary mt-2" href="/admin/contract/cadastros?competencia={{ period.label if period else '' }}&amp;projeto={{ project or 'DETRAN-GO' }}">Cadastros do contrato</a>
 </form>
 {% if period %}
 <dl class="row">
@@ -35,12 +38,66 @@
 </dl>
 <p>INS06/07: meta mínima de {{ knowledge_goal }}% no trimestre contratual {{ trimester }}. A progressão 60/70/80/90/95% é contínua; o PAO pondera os pontos, sem reduzir esta meta. A medição depende dos vínculos reais de conhecimento e CMDB.</p>
 {% if staffing_window %}
-<p>INS09/10: vigentes. Janela das três competências: {{ staffing_window[0].strftime('%d/%m/%Y') }} a {{ staffing_window[1].strftime('%d/%m/%Y') }}. Fórmulas e dados de pessoal pendentes; resultado não apurado.</p>
+<p>INS09/10: vigentes. Janela das três competências: {{ staffing_window[0].strftime('%d/%m/%Y') }} a {{ staffing_window[1].strftime('%d/%m/%Y') }}. Resultado na tabela da apuração, a partir do cadastro de pessoal confirmado.</p>
 {% else %}
 <p>INS09/10: não vigentes nesta competência. Não se aplica resultado zero.</p>
 {% endif %}
 <p>PAO: meses 1 e 2 = 50%; 3 e 4 = 70%; 5 e 6 = 80%; a partir do 7º = 100%.</p>
 <p class="text-muted">As definições dos relatórios instalados dependem da conferência do banco reports. Esta tela aplica as regras deste pacote.</p>
+{% endif %}
+{% if apuracao %}
+{% set a = apuracao %}
+<section class="mt-4" aria-labelledby="apuracao-title">
+<h2 id="apuracao-title" class="h4">Apuração completa da competência {{ period.label }}</h2>
+<p>Corte: {{ a.cut.strftime('%d/%m/%Y %H:%M') }}{% if a.partial %} <strong>(apuração parcial: a competência ainda não terminou)</strong>{% endif %} · {{ a.business_days }} dias úteis · feriados e pontos facultativos na competência: {% for d in a.holidays_in_period %}{{ d.strftime('%d/%m') }}{{ ', ' if not loop.last }}{% else %}nenhum{% endfor %} · fator PAO {{ a.factor }}.</p>
+<p>Chamados: só os abertos a partir de 22/09/2026, contados na competência em que foram solucionados. Prazo pelo SLA gravado no chamado; chamado sem SLA sai do denominador. Pontos da Tabela 25 × fator PAO; ajuste = pontos ÷ 10, limitado a 30%. Os dois cenários de fração ficam lado a lado até a definição.</p>
+{% if a.glpi_error %}<div class="alert alert-warning" role="status">Indicadores do GLPI sem dado: {{ a.glpi_error }}</div>{% endif %}
+<div class="row">
+{% for key, label in invoice_labels.items() %}{% set t = a.totals[key] %}
+<article class="col-md-6 mb-3"><div class="card card-body h-100" data-invoice="{{ key }}">
+  <h3 class="h5">{{ label }}</h3>
+  <p>Indicadores na fatura: {{ t.codes | join(', ') if t.codes else 'nenhum confirmado' }} · sem resultado: {{ t.without_result }}</p>
+  <p>TRS45: {{ t.trs45.occurrences }} ocorrências × 5 × {{ t.trs45.factor }} = {{ t.trs45.weighted }} pontos</p>
+  <table class="table table-sm"><thead><tr><th>Fração</th><th>Pontos</th><th>Ajuste calculado</th><th>Ajuste aplicado (teto 30%)</th><th>Excedente</th></tr></thead>
+  <tbody>{% for policy in ('proporcional', 'truncado') %}{% set adj = t[policy] %}<tr><th>{{ policy }}</th><td>{{ adj.points | round(2) }}</td><td>{{ adj.calculated | round(2) }}%</td><td>{{ adj.applied | round(2) }}%</td><td>{{ adj.excess | round(2) }}%</td></tr>{% endfor %}</tbody></table>
+</div></article>
+{% endfor %}
+</div>
+{% set u = a.totals.nao_atribuido %}
+<p>Fora das duas faturas até a confirmação: {{ u.codes | join(', ') if u.codes else 'nenhum' }}. Pontos desses indicadores (proporcional): Item 01 {{ u.item01.proporcional | round(2) }}, Item 02 {{ u.item02.proporcional | round(2) }}, geral {{ u.geral.proporcional | round(2) }}. TRS45 em entidade sem fatura: {{ a.totals.trs45_nao_atribuido.occurrences }}.</p>
+<div class="table-responsive"><table class="table table-sm" id="apuracao-indicadores">
+<caption>Indicadores por escopo (Item 01 = entidade Central TI; Item 02 = Infraestrutura e Manutenção)</caption>
+<thead><tr><th>Indicador</th><th>Escopo</th><th>Prioridade</th><th>Resultado</th><th>Numerador / denominador</th><th>Meta</th><th>Situação</th><th>Desvio</th><th>Pontos (proporcional / truncado)</th><th>Observação</th></tr></thead>
+<tbody>{% for r in a.rows %}<tr data-indicator="{{ r.code }}" data-scope="{{ r.scope }}" data-priority="{{ r.priority or '' }}" data-value="{{ r.value if r.value is not none else '' }}">
+<th>{{ r.code }}<br><small>{{ r.label }}</small></th><td>{{ scope_labels[r.scope] }}</td><td>{{ r.priority or '' }}</td>
+<td>{{ (r.value | round(2)) ~ '%' if r.value is not none else '' }}</td>
+<td>{{ r.numerator if r.numerator is not none else '' }}{% if r.denominator is not none %} / {{ r.denominator }}{% endif %}</td>
+<td>{{ r.direction == 'minimum' and '≥' or '≤' }} {{ r.goal | round(2) if r.goal is not none else '' }}</td>
+<td>{% if r.state == 'measured' %}{{ 'Dentro da meta' if r.meets_goal else 'Fora da meta' }}{% elif r.state == 'not_in_force' %}Não vigente{% elif r.state == 'no_sample' %}Sem amostra{% else %}Sem dado{% endif %}</td>
+<td>{{ r.points.deviation | round(2) if r.points and r.points.deviation is not none else '' }}</td>
+<td>{% if r.points and r.points.pending %}A confirmar{% elif r.points and r.points.proporcional is not none %}{{ r.points.proporcional | round(2) }} / {{ r.points.truncado | round(2) }}{% endif %}</td>
+<td>{{ r.note or '' }}{% if r.points and r.points.pending %} {{ r.points.pending }}{% endif %}{% for m in r.missing %} {{ m }}{% endfor %}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if a.glpi %}
+<h3 class="h5">P1 + P2 (sinal, sem efeito nos pontos)</h3>
+<ul>{% for scope, data in a.glpi.scopes.items() %}<li>{{ scope_labels[scope] }}: {{ (data.P1P2.share | round(1)) ~ '%' if data.P1P2.share is not none else 'sem chamados' }} ({{ data.P1P2.high }} de {{ data.P1P2.valid }}); limite {{ data.P1P2.limit }}%. {{ data.P1P2.rule }}</li>{% endfor %}</ul>
+<h3 class="h5">TRS45: {{ a.trs45 | length }} chamados passaram de 3 vezes o prazo de solução nesta competência</h3>
+<details><summary>Ver chamados</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Chamado</th><th>Fatura</th><th>Prioridade</th><th>SLA</th><th>Tempo líquido (h)</th><th>Limite × 3 (h)</th><th>Situação</th></tr></thead>
+<tbody>{% for t in a.trs45 %}<tr><td>{{ t.ticket }}</td><td>{{ t.scope }}</td><td>{{ t.priority or 'inválida' }}</td><td>{{ t.sla }}</td><td>{{ (t.net_seconds / 3600) | round(1) }}</td><td>{{ (t.limit_seconds * 3 / 3600) | round(1) }}</td><td>{{ t.state }}</td></tr>{% endfor %}</tbody></table></div></details>
+<h3 class="h5">Diagnósticos da base</h3>
+<ul>
+<li>Universo do contrato até o corte: {{ a.glpi.diagnostics.universe }} chamados; solucionados na competência: {{ a.glpi.diagnostics.solved_in_period }}; abertos antes de 22/09/2026 (fora): {{ a.glpi.diagnostics.excluded_before_contract }}.</li>
+<li>Prioridade fora de 2 a 5: {{ a.glpi.diagnostics.invalid_priority | length }}{% if a.glpi.diagnostics.invalid_priority %} ({{ a.glpi.diagnostics.invalid_priority[:30] | join(', ') }}){% endif %}.</li>
+<li>Entidade sem fatura: {{ a.glpi.diagnostics.unassigned_entity | length }} · transferidos entre entidades: {{ a.glpi.diagnostics.transferred | length }}.</li>
+<li>Zabbix com SLA em horário comercial: {{ a.glpi.diagnostics.zabbix_with_business_sla | length }}{% if a.glpi.diagnostics.zabbix_with_business_sla %} ({{ a.glpi.diagnostics.zabbix_with_business_sla[:30] | join(', ') }}){% endif %} · SLA em unidade não suportada: {{ a.glpi.diagnostics.unsupported_sla | length }}.</li>
+{% if a.glpi_missing_tables %}<li>Tabelas ausentes na cópia local: {{ a.glpi_missing_tables | join(', ') }}.</li>{% endif %}
+</ul>
+{% endif %}
+{% if a.api_ura.groups %}
+<p>API 4Biz (informativo): INS13 = {{ (a.api_ura.INS13.value | round(2)) ~ '%' if a.api_ura.INS13.value is not none else 'sem amostra' }} sobre {{ a.api_ura.INS13.denominator }} ligações atendidas; {{ a.api_ura.confront.equal }} de {{ a.api_ura.confront.total }} dias e serviços iguais ao CSV.</p>
+{% endif %}
+</section>
 {% endif %}
 {% if period %}
 <section class="mt-4" aria-labelledby="ura-result-title">
@@ -95,7 +152,7 @@
 </section>
 <section class="card card-body mt-4 contract-controls" aria-labelledby="ura-import-title">
 <h2 id="ura-import-title" class="h4">Importar CSV diário da URA</h2>
-<p>Arquivo UTF-8 separado por ponto e vírgula, com 31 colunas. Reimportar o mesmo conteúdo conserva os registros. Conteúdo divergente para projeto/serviço/data é recusado sem sobrescrever a origem.</p>
+<p>Arquivo UTF-8 separado por ponto e vírgula, com 31 colunas. Reimportar o mesmo conteúdo conserva os registros. Conteúdo divergente para projeto/serviço/data é recusado, a menos que a substituição seja marcada com justificativa.</p>
 <form method="post" action="/admin/contract/ura">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="competencia" value="{{ period.label }}">
@@ -109,15 +166,21 @@
     <label for="ura-csv">Conteúdo completo do CSV, incluindo cabeçalho</label>
     <textarea id="ura-csv" name="csv_content" class="form-control" rows="6"></textarea>
   </details>
+  <div class="form-check mt-3">
+    <input class="form-check-input" type="checkbox" id="ura-replace" name="substituir" value="1">
+    <label class="form-check-label" for="ura-replace">Substituir dias que já existem com valores diferentes (a versão anterior fica guardada)</label>
+  </div>
+  <label for="ura-reason">Justificativa da substituição (obrigatória ao substituir, mínimo de 10 caracteres)</label>
+  <input class="form-control" id="ura-reason" name="justificativa" maxlength="500">
   <button class="btn btn-primary mt-3" type="submit">Importar para {{ project }}</button>
 </form>
 </section>
 <section class="mt-4 contract-controls" aria-labelledby="ura-history-title">
 <h2 id="ura-history-title" class="h4">Últimas importações do projeto</h2>
 <div class="table-responsive"><table class="table">
-<thead><tr><th>Importação / origem</th><th>Registros</th><th>Novos</th><th>Existentes</th><th>SHA-256 do conteúdo</th></tr></thead>
-<tbody>{% for run in imports %}<tr><td>#{{ run.id }} · {{ run.source_name }}<br>{{ run.imported_at | local_datetime }} · {{ run.username }}</td><td>{{ run.record_count }}</td><td>{{ run.inserted_count }}</td><td>{{ run.unchanged_count }}</td><td style="overflow-wrap:anywhere;max-width:24rem"><code>{{ run.sha256 }}</code></td></tr>
-{% else %}<tr><td colspan="5">Nenhum CSV importado para {{ project }}. Escolha um arquivo para iniciar a apuração.</td></tr>{% endfor %}</tbody>
+<thead><tr><th>Importação / origem</th><th>Registros</th><th>Novos</th><th>Existentes</th><th>Substituídos</th><th>SHA-256 do conteúdo</th></tr></thead>
+<tbody>{% for run in imports %}<tr><td>#{{ run.id }} · {{ run.source_name }}<br>{{ run.imported_at | local_datetime }} · {{ run.username }}{% if run.reason %}<br>Justificativa: {{ run.reason }}{% endif %}</td><td>{{ run.record_count }}</td><td>{{ run.inserted_count }}</td><td>{{ run.unchanged_count }}</td><td>{{ run.replaced_count }}</td><td style="overflow-wrap:anywhere;max-width:24rem"><code>{{ run.sha256 }}</code></td></tr>
+{% else %}<tr><td colspan="6">Nenhum CSV importado para {{ project }}. Escolha um arquivo para iniciar a apuração.</td></tr>{% endfor %}</tbody>
 </table></div>
 </section>
 <script>

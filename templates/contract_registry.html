@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', path='contract.css') }}">
+<h1>Cadastros do contrato</h1>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if notice %}<div class="alert alert-success" role="status">{{ notice }}</div>{% endif %}
+{% if period %}
+<p>Competência {{ period.label }}: {{ period.start.strftime('%d/%m/%Y') }} a {{ period.end.strftime('%d/%m/%Y') }}. Indicador que depende de cadastro só tem resultado depois que o cadastro é confirmado como completo; sem confirmação, aparece "sem dado", nunca zero. Importar um arquivo novo reabre o cadastro.</p>
+<form method="get" action="/admin/contract/cadastros" class="contract-controls d-flex flex-wrap gap-2 mb-3">
+  <label for="registry-competence">Competência</label>
+  <input id="registry-competence" class="form-control" type="month" name="competencia" min="2026-10" value="{{ period.label }}" required>
+  <input type="hidden" name="projeto" value="{{ project }}">
+  <button class="btn btn-primary" type="submit">Abrir</button>
+  <a class="btn btn-outline-secondary" href="/admin/contract?competencia={{ period.label }}&amp;projeto={{ project }}">Voltar à apuração</a>
+</form>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="registry-status-title">
+<h2 id="registry-status-title" class="h4">Situação dos cadastros na competência</h2>
+<div class="table-responsive"><table class="table">
+<thead><tr><th>Cadastro</th><th>Situação</th><th></th></tr></thead>
+<tbody>{% for key, label in registries.items() %}<tr data-registry="{{ key }}"><td>{{ label }}</td>
+<td>{% if status[key] %}Confirmado por {{ status[key].confirmed_by }} em {{ status[key].confirmed_at | local_datetime }}{% else %}Não confirmado{% endif %}</td>
+<td><form method="post" action="/admin/contract/cadastros/confirmar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}">
+  <input type="hidden" name="cadastro" value="{{ key }}"><input type="hidden" name="acao" value="{{ 'reabrir' if status[key] else 'confirmar' }}">
+  <button class="btn btn-sm {{ 'btn-outline-secondary' if status[key] else 'btn-primary' }}" type="submit">{{ 'Reabrir' if status[key] else 'Confirmar como completo' }}</button>
+</form></td></tr>{% endfor %}</tbody>
+</table></div>
+</section>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="registry-import-title">
+<h2 id="registry-import-title" class="h4">Importar cadastro (CSV UTF-8, separado por ponto e vírgula)</h2>
+<p>O arquivo substitui o cadastro inteiro da competência (o de pessoal é único para o contrato). Pessoa é identificada por matrícula ou código, nunca por CPF. Datas em DD/MM/AAAA.</p>
+<ul>{% for key, layout in layouts.items() %}<li><strong>{{ key }}</strong>: <code>{{ layout }}</code></li>{% endfor %}</ul>
+<p>Ausências: "coberta" = sim quando houve substituto no dia (não conta). Duas ausências do mesmo perfil no mesmo dia contam um dia; perfis diferentes contam um dia cada. Desligamento: sem_justa_causa, justa_causa, pedido_demissao, termino_contrato ou transferencia. Projetos: notas de 1 a 5 em prazo, qualidade e comunicação. Disponibilidade: horas totais (HTP), indisponíveis (HIP), de manutenção programada (HMP) e de evento de terceiro (HIT).</p>
+<form method="post" action="/admin/contract/cadastros/importar" class="registry-upload">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}">
+  <label for="registry-kind">Cadastro</label>
+  <select id="registry-kind" name="cadastro" class="form-select">{% for key in layouts %}<option value="{{ key }}">{{ key }}</option>{% endfor %}</select>
+  <label for="registry-file">Arquivo CSV (até 2 MB)</label>
+  <input class="form-control" id="registry-file" type="file" accept=".csv,text/csv" data-target="registry-base64" data-text="registry-csv" data-status="registry-status">
+  <input type="hidden" id="registry-base64" name="csv_base64">
+  <p id="registry-status" role="status" aria-live="polite"></p>
+  <details><summary>Colar conteúdo CSV manualmente</summary>
+    <label for="registry-csv">Conteúdo completo, com cabeçalho</label>
+    <textarea id="registry-csv" name="csv_content" class="form-control" rows="6"></textarea>
+  </details>
+  <button class="btn btn-primary mt-3" type="submit">Importar</button>
+</form>
+</section>
+
+<section class="mb-4" aria-labelledby="registry-data-title">
+<h2 id="registry-data-title" class="h4">Conteúdo dos cadastros</h2>
+<details><summary>Ausências na competência ({{ absences | length }})</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Data</th><th>Equipe</th><th>Perfil</th><th>Pessoa</th><th>Coberta</th><th>Observação</th></tr></thead>
+<tbody>{% for r in absences %}<tr><td>{{ r.day.strftime('%d/%m/%Y') }}</td><td>{{ r.team }}</td><td>{{ r.profile }}</td><td>{{ r.person_ref }}</td><td>{{ 'sim' if r.covered else 'não' }}</td><td>{{ r.note or '' }}</td></tr>{% endfor %}</tbody></table></div></details>
+<details><summary>Alocações e desligamentos ({{ staff | length }})</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Pessoa</th><th>Equipe</th><th>Perfil</th><th>Início</th><th>Fim</th><th>Desligamento</th></tr></thead>
+<tbody>{% for r in staff %}<tr><td>{{ r.person_ref }}</td><td>{{ r.team }}</td><td>{{ r.profile }}</td><td>{{ r.start_date.strftime('%d/%m/%Y') }}</td><td>{{ r.end_date.strftime('%d/%m/%Y') if r.end_date else '' }}</td><td>{{ r.departure or '' }}</td></tr>{% endfor %}</tbody></table></div></details>
+<details><summary>Projetos avaliados ({{ projects | length }})</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Projeto</th><th>Prazo</th><th>Qualidade</th><th>Comunicação</th></tr></thead>
+<tbody>{% for r in projects %}<tr><td>{{ r.project }}</td><td>{{ r.deadline_score }}</td><td>{{ r.quality_score }}</td><td>{{ r.communication_score }}</td></tr>{% endfor %}</tbody></table></div></details>
+<details><summary>Ativos de disponibilidade ({{ assets | length }})</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Indicador</th><th>Ativo</th><th>HTP</th><th>HIP</th><th>HMP</th><th>HIT</th></tr></thead>
+<tbody>{% for r in assets %}<tr><td>{{ r.indicator }}</td><td>{{ r.asset }}</td><td>{{ r.total_hours }}</td><td>{{ r.unavailable_hours }}</td><td>{{ r.planned_hours }}</td><td>{{ r.third_party_hours }}</td></tr>{% endfor %}</tbody></table></div></details>
+<details><summary>Perfis mínimos da Tabela 01</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Equipe</th><th>Código do perfil</th><th>Perfil</th><th>Mínimo</th></tr></thead>
+<tbody>{% for p in profiles %}<tr><td>{{ p.team }}</td><td><code>{{ p.code }}</code></td><td>{{ p.label }}</td><td>{{ p.minimum }}</td></tr>{% endfor %}</tbody></table></div></details>
+</section>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="invoice-map-title">
+<h2 id="invoice-map-title" class="h4">Indicador → fatura</h2>
+<p>Enquanto o indicador estiver "a confirmar", os pontos dele ficam fora das duas faturas e aparecem à parte na apuração. Confirmar exige registrar a fonte da decisão.</p>
+<div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Indicador</th><th>Fatura</th><th>Fonte</th><th>Confirmado</th><th></th></tr></thead>
+<tbody>{% for r in invoice_map %}{% set fid = 'invoice-' ~ r.indicator %}<tr data-invoice-indicator="{{ r.indicator }}">
+<td>{{ r.indicator }}</td>
+<td><select name="fatura" form="{{ fid }}" class="form-select form-select-sm" aria-label="Fatura de {{ r.indicator }}">{% for key, label in invoice_choices.items() %}<option value="{{ key }}" {% if key == r.invoice %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
+<td><input name="fonte" form="{{ fid }}" class="form-control form-control-sm" maxlength="255" value="{{ r.source }}" aria-label="Fonte de {{ r.indicator }}"></td>
+<td><input type="checkbox" name="confirmado" form="{{ fid }}" value="1" {% if r.confirmed %}checked{% endif %} aria-label="{{ r.indicator }} confirmado"></td>
+<td><form id="{{ fid }}" method="post" action="/admin/contract/cadastros/fatura"><input type="hidden" name="indicador" value="{{ r.indicator }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}"><button class="btn btn-sm btn-outline-primary" type="submit">Gravar</button></form></td></tr>{% endfor %}</tbody>
+</table></div>
+</section>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="entity-map-title">
+<h2 id="entity-map-title" class="h4">Entidade do GLPI → fatura</h2>
+<p>Chamado em entidade fora deste mapa (raiz ou outra) fica sem fatura e aparece nos diagnósticos.</p>
+<div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Entidade</th><th>Fatura</th><th>Fonte</th><th>Confirmado</th><th></th></tr></thead>
+<tbody>{% for r in entity_map %}<tr><td>{{ r.entity_id }}</td><td>{{ invoices[r.invoice] if r.invoice in invoices else r.invoice }}</td><td>{{ r.source }}</td><td>{{ 'sim' if r.confirmed else 'não' }}</td>
+<td><form method="post" action="/admin/contract/cadastros/entidade"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}"><input type="hidden" name="entidade" value="{{ r.entity_id }}"><input type="hidden" name="acao" value="remover"><button class="btn btn-sm btn-outline-danger" type="submit">Remover</button></form></td></tr>{% endfor %}</tbody>
+</table></div>
+<form method="post" action="/admin/contract/cadastros/entidade" class="d-flex flex-wrap gap-2 align-items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}">
+  <div><label for="entity-id">Entidade (id)</label><input id="entity-id" class="form-control" type="number" min="0" name="entidade" required></div>
+  <div><label for="entity-invoice">Fatura</label><select id="entity-invoice" name="fatura" class="form-select">{% for key, label in invoices.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+  <div><label for="entity-source">Fonte</label><input id="entity-source" class="form-control" name="fonte" maxlength="255" required></div>
+  <div class="form-check"><input class="form-check-input" type="checkbox" id="entity-confirmed" name="confirmado" value="1"><label class="form-check-label" for="entity-confirmed">Confirmado</label></div>
+  <button class="btn btn-primary" type="submit">Gravar entidade</button>
+</form>
+</section>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="holiday-title">
+<h2 id="holiday-title" class="h4">Feriados e pontos facultativos (dias não úteis)</h2>
+<p>Usados no relógio de expediente (segunda a sexta, 7h às 19h), na janela de 4 dias úteis do INS05 e no D do INS11. Os chamados do Zabbix correm 24 horas.</p>
+<form method="post" action="/admin/contract/cadastros/feriado" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}">
+  <div><label for="holiday-day">Data</label><input id="holiday-day" class="form-control" type="date" name="dia" required></div>
+  <div><label for="holiday-name">Nome</label><input id="holiday-name" class="form-control" name="nome" maxlength="160" required></div>
+  <div><label for="holiday-kind">Tipo</label><select id="holiday-kind" name="tipo" class="form-select">{% for key, label in holiday_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+  <div><label for="holiday-source">Fonte (decreto, lei, calendário)</label><input id="holiday-source" class="form-control" name="fonte" maxlength="160" required></div>
+  <button class="btn btn-primary" type="submit">Gravar feriado</button>
+</form>
+<details><summary>Calendário cadastrado ({{ holidays | length }} dias)</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Data</th><th>Nome</th><th>Tipo</th><th>Fonte</th><th></th></tr></thead>
+<tbody>{% for h in holidays %}<tr><td>{{ h.day.strftime('%d/%m/%Y') }}</td><td>{{ h.name }}</td><td>{{ holiday_kinds.get(h.kind, h.kind) }}</td><td>{{ h.source }}</td>
+<td><form method="post" action="/admin/contract/cadastros/feriado"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}"><input type="hidden" name="dia" value="{{ h.day.isoformat() }}"><input type="hidden" name="acao" value="remover"><button class="btn btn-sm btn-outline-danger" type="submit">Remover</button></form></td></tr>{% endfor %}</tbody></table></div></details>
+</section>
+
+<section class="card card-body mb-4 contract-controls" aria-labelledby="api-title">
+<h2 id="api-title" class="h4">API 4Biz (ligações atendidas)</h2>
+<p>A consulta grava só o total por dia e serviço: atendidas e atendidas em até 30 segundos. Telefone, agente, conta, CTI e identificador da ligação são descartados na leitura. A senha fica cifrada e não é exibida.</p>
+<form method="post" action="/admin/contract/cadastros/api" class="mb-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}">
+  <label for="api-user">Usuário</label><input id="api-user" class="form-control" name="usuario" value="{{ api.user }}" autocomplete="off" required>
+  <label for="api-password">Senha ({{ 'gravada; preencha só para trocar' if api_has_password else 'não gravada' }})</label><input id="api-password" class="form-control" type="password" name="senha" autocomplete="new-password">
+  <label for="api-login">Endereço de login</label><input id="api-login" class="form-control" name="login_url" value="{{ api.login_url }}" required>
+  <label for="api-query">Endereço de consulta</label><input id="api-query" class="form-control" name="consulta_url" value="{{ api.query_url }}" required>
+  <label for="api-project">Projeto na API</label><input id="api-project" class="form-control" name="projeto_api" value="{{ api.project }}" required>
+  <button class="btn btn-primary mt-3" type="submit">Gravar configuração</button>
+</form>
+<form method="post" action="/admin/contract/cadastros/api/consultar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="competencia" value="{{ period.label }}"><input type="hidden" name="projeto" value="{{ project }}">
+  <button class="btn btn-outline-primary" type="submit" {% if not api_has_password %}disabled{% endif %}>Consultar a competência {{ period.label }} na API</button>
+</form>
+<details class="mt-3"><summary>Agregado gravado da API ({{ api_rows | length }} dias e serviços)</summary><div class="table-responsive"><table class="table table-sm">
+<thead><tr><th>Dia</th><th>Serviço</th><th>Atendidas</th><th>Até 30 s</th></tr></thead>
+<tbody>{% for r in api_rows %}<tr><td>{{ r.day.strftime('%d/%m/%Y') }}</td><td>{{ r.service_name }}</td><td>{{ r.answered }}</td><td>{{ r.answered_30 }}</td></tr>{% endfor %}</tbody></table></div></details>
+</section>
+<script>
+(() => {
+  document.querySelectorAll('input[type=file][data-target]').forEach((input) => {
+    const encoded = document.getElementById(input.dataset.target);
+    const content = document.getElementById(input.dataset.text);
+    const status = document.getElementById(input.dataset.status);
+    content.addEventListener('input', () => { encoded.value = ''; });
+    input.addEventListener('change', async () => {
+      encoded.value = ''; content.value = '';
+      const file = input.files[0];
+      if (!file) { status.textContent = ''; return; }
+      if (file.size > 2000000) { status.textContent = 'Arquivo acima de 2 MB.'; return; }
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        content.value = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+        encoded.value = btoa(binary);
+        status.textContent = file.name + ' carregado. Clique em Importar para gravar.';
+      } catch (_) { status.textContent = 'Não foi possível ler o arquivo. Confira se está em UTF-8.'; }
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

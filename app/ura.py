@@ -2,12 +2,13 @@
 import csv
 from datetime import datetime
 import hashlib
+import json
 from io import StringIO
 import re
 
 from sqlalchemy import select
 
-from app.models import AdminActionLog, UraDaily, UraImportRun
+from app.models import AdminActionLog, UraDaily, UraDailyRevision, UraImportRun
 
 MAX_CSV_BYTES = 2_000_000
 COUNTS = {'incoming':3, 'answered':4, 'abandoned':5, 'blocked':6,
@@ -73,28 +74,43 @@ def parse_ura_csv(raw: bytes):
     return original, records
 
 
-def import_ura_csv(db, raw: bytes, *, project: str, source_name: str, username: str):
+def import_ura_csv(db, raw: bytes, *, project: str, source_name: str, username: str, replace: bool = False, reason: str | None = None):
     project = normalize_project(project)
     original, records = parse_ura_csv(raw)
     source_name = (source_name or 'ura.csv').replace('\\','/').rsplit('/',1)[-1][:255]
+    reason = (reason or '').strip()
+    if replace and len(reason) < 10:
+        raise ValueError('Para substituir dias já importados, informe a justificativa (mínimo de 10 caracteres).')
     try:
         existing = {(row.service_id,row.day):row for row in db.scalars(select(UraDaily).where(
             UraDaily.project == project, UraDaily.day >= min(r['day'] for r in records), UraDaily.day <= max(r['day'] for r in records)))}
-        new_records = []
+        new_records, changed = [], []
         for record in records:
             old = existing.get((record['service_id'],record['day']))
             if old is None:
                 new_records.append(record)
             elif any(getattr(old,key) != value for key,value in record.items()):
-                raise ValueError(f"Conflito no serviço {record['service_id']} em {record['day']}: já existe outro conteúdo. Nenhum registro foi alterado.")
+                if not replace:
+                    raise ValueError(f"Conflito no serviço {record['service_id']} em {record['day']}: já existe outro conteúdo. Nenhum registro foi alterado. Para corrigir, marque a substituição e informe a justificativa.")
+                changed.append((old, record))
         run = UraImportRun(project=project,source_name=source_name,sha256=hashlib.sha256(raw).hexdigest(),raw_csv=original,
-                           username=username,record_count=len(records),inserted_count=len(new_records),unchanged_count=len(records)-len(new_records))
+                           username=username,record_count=len(records),inserted_count=len(new_records),
+                           unchanged_count=len(records)-len(new_records)-len(changed),replaced_count=len(changed),reason=reason or None)
         db.add(run)
         db.flush()
         for record in new_records:
             db.add(UraDaily(project=project,import_id=run.id,**record))
+        for old, record in changed:
+            before = {key:getattr(old,key) for key in COUNTS}
+            after = {key:record[key] for key in COUNTS}
+            db.add(UraDailyRevision(import_id=run.id,previous_import_id=old.import_id,project=project,service_id=old.service_id,day=old.day,
+                                    before=json.dumps(before,sort_keys=True),after=json.dumps(after,sort_keys=True)))
+            for key,value in record.items():
+                setattr(old,key,value)
+            old.import_id = run.id
         db.add(AdminActionLog(username=username, action='import_ura_csv', table_name='ura_daily', status='success',
-                              message=f'Importação URA {run.id}; projeto={project}; SHA256={run.sha256}; novos={run.inserted_count}; existentes={run.unchanged_count}.'))
+                              message=f'Importação URA {run.id}; projeto={project}; SHA256={run.sha256}; novos={run.inserted_count}; existentes={run.unchanged_count}; substituídos={run.replaced_count}'
+                                      + (f'; justificativa={reason}' if changed else '') + '.'))
         db.commit()
         return run
     except Exception:

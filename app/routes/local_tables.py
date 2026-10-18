@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db, local_engine
 from app.deletion_dependencies import delete_widgets, local_table_dependencies
-from app.models import AdminActionLog, Report, ReportExecution
+from app.models import CONTRACT_INTERNAL_TABLES, AdminActionLog, Report, ReportExecution
 from app.reporting import IDENTIFIER_RE, cleanup_expired_temp_report_tables, quote_identifier, run_select
 from app.routes.common import form_lists, render
 from app.security import require_importacao, verify_csrf
@@ -25,7 +25,7 @@ PREVIEW_LIMIT = 100
 BULK_TABLE_ACTIONS = {"export", "clear", "recreate", "delete"}
 DESTRUCTIVE_BULK_TABLE_ACTIONS = {"clear", "recreate", "delete"}
 INTERNAL_TABLES = {
-    "ura_daily", "ura_import_runs",
+    *CONTRACT_INTERNAL_TABLES,
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",

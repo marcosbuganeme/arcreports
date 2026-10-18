@@ -45,6 +45,23 @@ class Competence:
 
 
 CONTRACT_START = date(2026, 9, 22)
+PORTAL_TIMEZONE = 'America/Sao_Paulo'
+
+
+def portal_today() -> date:
+    from datetime import datetime
+    import pytz
+    return datetime.now(pytz.timezone(PORTAL_TIMEZONE)).date()
+
+
+def current_competence() -> Competence:
+    return Competence.containing(max(portal_today(), CONTRACT_START))
+
+
+def contract_competence(value: str) -> Competence:
+    period = Competence.parse(value)
+    contract_month(period)
+    return period
 
 
 def previous_competence(period: Competence) -> Competence | None:

@@ -11,7 +11,7 @@
 <div data-config-field="gauge_options">
   <label class="form-label" for="{{ prefix }}-mode">Operação do medidor</label>
   <select class="form-select" id="{{ prefix }}-mode" name="gauge_mode">
-    {% for value, label in [('legacy','Partição legada (contagem)'),('ratio','Razão: soma do numerador ÷ soma do denominador × 100'),('value','Resultado numérico agregado')] %}
+    {% for value, label in [('legacy','Partição legada: A ÷ (A + B), contagem'),('ratio_sources','Razão entre fontes: contagem de A ÷ contagem de B × 100'),('ratio','Razão: soma do numerador ÷ soma do denominador × 100'),('value','Resultado numérico agregado')] %}
     <option value="{{ value }}" {% if widget and widget.gauge_mode == value %}selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
@@ -21,7 +21,7 @@
     <option value="maximum" {% if widget and widget.goal_direction == 'maximum' %}selected{% endif %}>Máxima (≤)</option>
   </select>
   {{ field_select(prefix ~ '-denominator', 'denominator_field', widget.denominator_field if widget else none, widget.source_id if widget else none, 'Campo denominador (razão)') }}
-  <small>Razão usa campos numéricos da mesma fonte e período. Resultado numérico usa a agregação escolhida. Configure o campo de data. A fonte B pertence à partição legada.</small>
+  <small>Razão usa campos numéricos da mesma fonte e período. Resultado numérico usa a agregação escolhida. Configure o campo de data. A fonte B é usada na partição legada (A ÷ (A + B)) e na razão entre fontes (A ÷ B), por exemplo atendidas ÷ entrantes.</small>
 </div>
 {% endmacro %}
 {% macro dashboard_category_checks(prefix, selected_categories) %}

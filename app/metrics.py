@@ -21,7 +21,12 @@ def measure(numerator, denominator=None, *, mode='ratio', goal=None, direction='
     if mode == 'ratio' and ((num is not None and num < 0) or (den is not None and den < 0)):
         raise ValueError('Contagens de razão não podem ser negativas.')
     value = None if num is None or (mode == 'ratio' and not den) else num / den * 100 if mode == 'ratio' else num
-    target = decimal_value(goal) if goal is not None else None
+    if goal is None:
+        target = None
+    elif isinstance(goal, Decimal) and goal.is_finite() and goal >= 0:
+        target = goal  # meta calculada (ex.: 15 ÷ 0,7) não passa pelo limite de casas da meta digitada
+    else:
+        target = decimal_value(goal)
     meets = None if value is None or target is None else value >= target if direction == 'minimum' else value <= target
     return {'value': value, 'numerator': num, 'denominator': den, 'goal': target,
             'direction': direction, 'symbol': '≥' if direction == 'minimum' else '≤',

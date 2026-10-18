@@ -149,6 +149,7 @@ INITIAL_SYNC_TABLES = [
     "glpi_ticketvalidations",
     "glpi_ticketsatisfactions",
     "glpi_items_tickets",
+    "glpi_knowbaseitems_items",
     "glpi_computers",
     "glpi_printers",
     "glpi_networkequipments",

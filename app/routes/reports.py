@@ -23,7 +23,7 @@ from app.config import get_settings
 from app.database import get_db, local_engine
 from app.deletion_dependencies import delete_widgets, report_dependencies
 from app.glpi_import import IDENTIFIER_RE
-from app.models import AdminActionLog, DashboardSource, Report, ReportCategory, ReportExecution, SystemConfig, User
+from app.models import CONTRACT_INTERNAL_TABLES, AdminActionLog, DashboardSource, Report, ReportCategory, ReportExecution, SystemConfig, User
 from app.reporting import IDENTIFIER_RE as REPORT_IDENTIFIER_RE
 from app.reporting import (
     apply_query_timeout,
@@ -77,7 +77,7 @@ BUILDER_ALLOWED_OPERATORS = {
 BUILDER_AGGREGATES = {"count", "sum", "avg", "max", "min"}
 BUILDER_SORT_DIRECTIONS = {"asc", "desc"}
 BUILDER_EXCLUDED_TABLES = {
-    "ura_daily", "ura_import_runs",
+    *CONTRACT_INTERNAL_TABLES,
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",

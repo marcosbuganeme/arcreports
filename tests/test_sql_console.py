@@ -54,8 +54,6 @@ def test_sql_console_allows_expected_commands(db_session, sql_query, expected_co
     [
         "relatorio_mensal",
         "dashboard_resumo",
-        "memora_chamados",
-        "sti_inventario",
         "zabbix_hosts",
         "redmine_issues",
         "bookstack_pages",
@@ -68,6 +66,11 @@ def test_sql_console_allows_configured_write_prefixes(table_name):
 
 def test_sql_console_no_longer_allows_trs_sla_contratos():
     assert sql_console_routes.is_write_table_allowed("trs_sla_contratos") is False
+
+
+@pytest.mark.parametrize("table_name", ["memora_chamados", "sti_inventario", "contract_absences", "ura_daily"])
+def test_sql_console_blocks_removed_and_contract_prefixes(table_name):
+    assert sql_console_routes.is_write_table_allowed(table_name) is False
 
 
 @pytest.mark.parametrize(

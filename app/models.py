@@ -471,6 +471,8 @@ class UraImportRun(Base):
     record_count: Mapped[int] = mapped_column(Integer, nullable=False)
     inserted_count: Mapped[int] = mapped_column(Integer, nullable=False)
     unchanged_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    replaced_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class UraDaily(Base):
@@ -491,3 +493,135 @@ class UraDaily(Base):
     answered_after_30: Mapped[int] = mapped_column(Integer, nullable=False)
     abandoned_after_30: Mapped[int] = mapped_column(Integer, nullable=False)
     import_id: Mapped[int] = mapped_column(ForeignKey('ura_import_runs.id'), nullable=False, index=True)
+
+
+class UraDailyRevision(Base):
+    __tablename__ = 'ura_daily_revisions'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey('ura_import_runs.id'), nullable=False, index=True)
+    previous_import_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    project: Mapped[str] = mapped_column(String(80), nullable=False)
+    service_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    before: Mapped[str] = mapped_column(Text, nullable=False)
+    after: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class UraApiDaily(Base):
+    __tablename__ = 'ura_api_daily'
+    __table_args__ = (UniqueConstraint('project', 'service_name', 'day', name='uq_ura_api_project_service_day'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    answered: Mapped[int] = mapped_column(Integer, nullable=False)
+    answered_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ContractHoliday(Base):
+    __tablename__ = 'contract_holidays'
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(150), nullable=False, default='sistema')
+
+
+class ContractAbsence(Base):
+    __tablename__ = 'contract_absences'
+    __table_args__ = (UniqueConstraint('day', 'team', 'profile', 'person_ref', name='uq_contract_absence'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    team: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile: Mapped[str] = mapped_column(String(80), nullable=False)
+    person_ref: Mapped[str] = mapped_column(String(80), nullable=False)
+    covered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    note: Mapped[Optional[str]] = mapped_column(String(255))
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ContractStaff(Base):
+    __tablename__ = 'contract_staff'
+    __table_args__ = (UniqueConstraint('person_ref', 'team', 'start_date', name='uq_contract_staff'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_ref: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    team: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile: Mapped[str] = mapped_column(String(80), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    departure: Mapped[Optional[str]] = mapped_column(String(40))
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ContractAvailability(Base):
+    __tablename__ = 'contract_availability'
+    __table_args__ = (UniqueConstraint('competence', 'indicator', 'asset', name='uq_contract_availability'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competence: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    indicator: Mapped[str] = mapped_column(String(10), nullable=False)
+    asset: Mapped[str] = mapped_column(String(160), nullable=False)
+    total_hours: Mapped[str] = mapped_column(String(40), nullable=False)
+    unavailable_hours: Mapped[str] = mapped_column(String(40), nullable=False)
+    planned_hours: Mapped[str] = mapped_column(String(40), nullable=False, default='0')
+    third_party_hours: Mapped[str] = mapped_column(String(40), nullable=False, default='0')
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ContractProjectScore(Base):
+    __tablename__ = 'contract_project_scores'
+    __table_args__ = (UniqueConstraint('competence', 'project', name='uq_contract_project_score'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competence: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    project: Mapped[str] = mapped_column(String(160), nullable=False)
+    invoice: Mapped[str] = mapped_column(String(10), nullable=False)
+    deadline_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    quality_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    communication_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    username: Mapped[str] = mapped_column(String(150), nullable=False)
+
+
+class ContractRegistryStatus(Base):
+    __tablename__ = 'contract_registry_status'
+    __table_args__ = (UniqueConstraint('competence', 'registry', name='uq_contract_registry_status'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competence: Mapped[str] = mapped_column(String(7), nullable=False)
+    registry: Mapped[str] = mapped_column(String(40), nullable=False)
+    confirmed_by: Mapped[str] = mapped_column(String(150), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ContractInvoiceMap(Base):
+    __tablename__ = 'contract_invoice_map'
+
+    indicator: Mapped[str] = mapped_column(String(10), primary_key=True)
+    invoice: Mapped[str] = mapped_column(String(20), nullable=False)
+    confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(150), nullable=False, default='sistema')
+
+
+class ContractEntityMap(Base):
+    __tablename__ = 'contract_entity_map'
+
+    entity_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice: Mapped[str] = mapped_column(String(20), nullable=False)
+    confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(150), nullable=False, default='sistema')
+
+
+CONTRACT_INTERNAL_TABLES = frozenset({
+    'ura_daily', 'ura_import_runs', 'ura_daily_revisions', 'ura_api_daily',
+    'contract_holidays', 'contract_absences', 'contract_staff', 'contract_availability',
+    'contract_project_scores', 'contract_registry_status', 'contract_invoice_map', 'contract_entity_map',
+})

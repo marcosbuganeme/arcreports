@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal, local_engine
-from app.models import GlpiImportLog, Report, ReportExecution, TempReportResult
+from app.models import CONTRACT_INTERNAL_TABLES, GlpiImportLog, Report, ReportExecution, TempReportResult
 from app.routes.common import get_allowed_databases
 
 
@@ -82,7 +82,7 @@ AUTO_INDEX_CONTROL_COLUMNS = (
 )
 PREFIX_INDEX_DATA_TYPES = {"char", "varchar", "tinytext", "text", "mediumtext", "longtext"}
 INTERNAL_DESTINATION_TABLES = {
-    "ura_daily", "ura_import_runs",
+    *CONTRACT_INTERNAL_TABLES,
     "admin_action_logs",
     "auth_logs",
     "dashboard_sources",
