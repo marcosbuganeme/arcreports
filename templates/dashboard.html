@@ -71,6 +71,7 @@
             <div style="font-size:32px; font-weight:500; color:var(--color-text-primary); line-height:1; margin-bottom:8px">
               {{ widget_data.valor_atual | int | format_number }}
             </div>
+            {% if widget_data.comparison_state is defined %}<p>{{ widget_data.comparison_state }}</p>{% endif %}
             {% if widget_data.variacao_pct is not none %}
             <div style="font-size:12px; display:flex; align-items:center; gap:4px">
               {% if widget_data.direcao == "up" %}
