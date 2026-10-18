@@ -6,6 +6,8 @@
 <form method="get" action="/admin/contract" class="card card-body mb-3">
   <label for="contract-project">Projeto URA</label>
   <input id="contract-project" class="form-control" name="projeto" maxlength="80" value="{{ project or 'DETRAN-GO' }}" required>
+  <label for="contract-service">Código do serviço URA (opcional; vazio = todos)</label>
+  <input id="contract-service" class="form-control" type="number" min="0" max="2147483647" name="servico" value="{{ ura.service_id if ura and ura.service_id is not none else '' }}">
   <label for="contract-competence">Competência</label>
   <input id="contract-competence" class="form-control" type="month" name="competencia" min="2026-10" required value="{{ period.label if period else '' }}">
   <label for="contract-goal" class="mt-3">Meta-base informada (simulação)</label>
@@ -38,6 +40,26 @@
 <p class="text-muted">As definições dos relatórios instalados dependem da conferência do banco reports. Esta tela aplica as regras deste pacote.</p>
 {% endif %}
 {% if period %}
+<section class="mt-4" aria-labelledby="ura-result-title">
+<h2 id="ura-result-title" class="h4">INS12 e INS13 — {{ project }}</h2>
+{% if ura.count %}
+<p>{{ ura.count }} registros de serviço/dia. Dados de {{ ura.first.strftime('%d/%m/%Y') }} até {{ ura.cut.strftime('%d/%m/%Y') }}.
+<strong>{{ 'Apuração parcial: faltam datas na competência.' if ura.partial else 'Todas as datas dos serviços presentes estão registradas.' }}</strong></p>
+{% else %}<p>Nenhum registro neste período e filtro. Importe o CSV ou confira projeto, serviço e competência.</p>{% endif %}
+<p>A cobertura considera os serviços presentes na série. A ausência de outros serviços exige conferência da origem; registro zero de chamadas difere de data ausente.</p>
+<div class="row">
+{% for metric in ura.metrics %}
+<article class="col-md-6 mb-3"><div class="card card-body h-100">
+  <h3 class="h5">{{ metric.code }}</h3>
+  <p class="fs-2">{{ (metric.value | round(2)) ~ '%' if metric.value is not none else 'Sem amostra' }}</p>
+  <p>{{ metric.formula }}</p>
+  <p>Numerador: {{ metric.numerator if metric.numerator is not none else 'ausente' }} · Denominador: {{ metric.denominator if metric.denominator is not none else 'ausente' }}</p>
+  <p>Meta mínima: {{ metric.base_goal }}% × PAO {{ metric.factor }} = {{ metric.goal }}%</p>
+  <p>{{ 'Sem amostra para avaliar a meta' if metric.meets_goal is none else 'Dentro da meta' if metric.meets_goal else 'Fora da meta' }}</p>
+</div></article>
+{% endfor %}
+</div>
+</section>
 <section class="card card-body mt-4" aria-labelledby="ura-import-title">
 <h2 id="ura-import-title" class="h4">Importar CSV diário da URA</h2>
 <p>Arquivo UTF-8 separado por ponto e vírgula, com 31 colunas. Reimportar o mesmo conteúdo conserva os registros. Conteúdo divergente para projeto/serviço/data é recusado sem sobrescrever a origem.</p>

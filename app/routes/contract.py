@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.billing_rules import Competence, contract_month, pao_factor, decimal_value, adjusted_goal, weighted_points, knowledge_goal, staffing_window
 from app.database import get_db
+from app.contract_report import ura_report
 from app.models import UraImportRun
 from app.ura import import_ura_csv, normalize_project, MAX_CSV_BYTES
 from app.routes.common import render, form_data
@@ -39,6 +40,11 @@ async def contract_page(request: Request, db: Session = Depends(get_db)):
     try:
         context = contract_context(request.query_params)
         context['project'] = normalize_project(request.query_params.get('projeto') or 'DETRAN-GO')
+        service = request.query_params.get('servico') or ''
+        service_id = int(service) if service else None
+        if service_id is not None and (service_id < 0 or service_id > 2147483647):
+            raise ValueError('Código de serviço inválido.')
+        context['ura'] = ura_report(db, context['period'], context['project'], service_id)
     except ValueError as exc:
         return render(request, 'contract.html', {'active': 'contract', 'error': str(exc)}, db, status_code=400)
     context['imports'] = db.scalars(select(UraImportRun).where(UraImportRun.project == context['project']).order_by(UraImportRun.id.desc()).limit(20)).all()
