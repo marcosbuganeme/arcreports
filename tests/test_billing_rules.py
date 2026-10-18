@@ -17,7 +17,7 @@ def test_competence_boundaries(label, start, end):
     assert Competence.containing(start) == Competence.containing(end) == period
 
 
-@pytest.mark.parametrize("value", ["", "2026-13", "2026-00", "2026-1", "2026-10-01", "0000-01"])
+@pytest.mark.parametrize("value", ["", "2026-13", "2026-00", "2026-1", "2026-10-01", "0000-01", "0001-01"])
 def test_invalid_competence(value):
     with pytest.raises(ValueError):
         Competence.parse(value)

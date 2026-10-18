@@ -11,6 +11,8 @@ class Competence:
 
     def __post_init__(self):
         date(self.year, self.month, 1)
+        if (self.year, self.month) == (1, 1):
+            raise ValueError("Competência sem mês anterior representável.")
 
     @classmethod
     def parse(cls, value: str):
