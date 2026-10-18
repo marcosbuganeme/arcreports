@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Apuração contratual</h1>
+<p>Contrato iniciado em 22/09/2026. Regras aplicadas à competência selecionada.</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<form method="get" action="/admin/contract" class="card card-body mb-3">
+  <label for="contract-competence">Competência</label>
+  <input id="contract-competence" class="form-control" type="month" name="competencia" min="2026-10" required value="{{ period.label if period else '' }}">
+  <button class="btn btn-primary mt-3" type="submit">Apurar competência</button>
+</form>
+{% if period %}
+<dl class="row">
+  <dt class="col-sm-4">Período inclusivo</dt><dd class="col-sm-8">{{ period.start.strftime('%d/%m/%Y') }} a {{ period.end.strftime('%d/%m/%Y') }}</dd>
+  <dt class="col-sm-4">Mês contratual</dt><dd class="col-sm-8">{{ contract_month }}</dd>
+  <dt class="col-sm-4">Fator PAO</dt><dd class="col-sm-8">{{ factor * 100 }}%</dd>
+</dl>
+<p>PAO: meses 1 e 2 = 50%; 3 e 4 = 70%; 5 e 6 = 80%; a partir do 7º = 100%.</p>
+<p class="text-muted">As definições dos relatórios instalados dependem da conferência do banco reports. Esta tela aplica as regras deste pacote.</p>
+{% endif %}
+{% endblock %}

@@ -25,7 +25,7 @@ from app.glpi_import import run_connector_import, seed_connector_settings
 from app.models import AdminActionLog, Dashboard, DashboardWidget, GlpiImportLog, ConnectorConfig, ConnectorRun, Report, ReportCategory, ReportExecution, SystemConfig, User
 from app.reporting import cleanup_expired_temp_report_tables, cleanup_orphan_temp_report_tables, ensure_reporting_schema, run_auto_index_maintenance
 from app.reporting import run_select
-from app.routes import admin_access, appearance, auth, dashboard, db_users, history, imports, local_tables, report_categories, reports, sql_console, system_health
+from app.routes import contract, admin_access, appearance, auth, dashboard, db_users, history, imports, local_tables, report_categories, reports, sql_console, system_health
 from app.security import ensure_admin_user, ensure_portal_groups, generate_csrf_token
 from app.system_config import set_system_config_value
 from app.timezone import format_datetime_portal, format_local_datetime
@@ -1075,6 +1075,7 @@ def shutdown() -> None:
         scheduler.shutdown(wait=False)
 
 
+app.include_router(contract.router)
 app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)

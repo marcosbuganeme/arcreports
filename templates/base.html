@@ -112,6 +112,9 @@
         {% endif %}
         <a class="nav-link {{ 'active' if active == 'users_groups' else '' }}" href="/admin/users-groups">Usuarios e Grupos</a>
         {% endif %}
+        {% if current_user and current_user.is_admin %}
+        <a class="nav-link {{ 'active' if active == 'contract' else '' }}" href="/admin/contract">Apuração contratual</a>
+        {% endif %}
       </nav>
     </aside>
     <main class="content">

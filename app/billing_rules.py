@@ -48,3 +48,17 @@ CONTRACT_START = date(2026, 9, 22)
 def previous_competence(period: Competence) -> Competence | None:
     previous = Competence.containing(period.start - timedelta(days=1))
     return previous if previous.start >= CONTRACT_START else None
+
+
+def contract_month(period: Competence) -> int:
+    first = Competence.containing(CONTRACT_START)
+    month = (period.year - first.year) * 12 + period.month - first.month + 1
+    if month < 1:
+        raise ValueError('Competência anterior ao início do contrato em 22/09/2026.')
+    return month
+
+
+def pao_factor(period: Competence):
+    from decimal import Decimal
+    month = contract_month(period)
+    return Decimal('0.5') if month <= 2 else Decimal('0.7') if month <= 4 else Decimal('0.8') if month <= 6 else Decimal('1')
