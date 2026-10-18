@@ -1,9 +1,11 @@
 {% extends 'base.html' %}
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', path='contract.css') }}">
 <h1>Apuração contratual</h1>
 <p>Contrato iniciado em 22/09/2026. Regras aplicadas à competência selecionada.</p>
+{% if imported_run %}<div class="alert alert-success" role="status">Importação #{{ imported_run.id }} concluída: {{ imported_run.inserted_count }} novos registros e {{ imported_run.unchanged_count }} já existentes. Nenhum registro duplicado.</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
-<form method="get" action="/admin/contract" class="card card-body mb-3">
+<form method="get" action="/admin/contract" class="card card-body mb-3 contract-controls">
   <label for="contract-project">Projeto URA</label>
   <input id="contract-project" class="form-control" name="projeto" maxlength="80" value="{{ project or 'DETRAN-GO' }}" required>
   <label for="contract-service">Código do serviço URA (opcional; vazio = todos)</label>
@@ -25,6 +27,7 @@
 {% if period %}
 <dl class="row">
   <dt class="col-sm-4">Período inclusivo</dt><dd class="col-sm-8">{{ period.start.strftime('%d/%m/%Y') }} a {{ period.end.strftime('%d/%m/%Y') }}</dd>
+  <dt class="col-sm-4">Competência anterior</dt><dd class="col-sm-8">{% if previous_period %}{{ previous_period.label }}: {{ previous_period.start.strftime('%d/%m/%Y') }} a {{ previous_period.end.strftime('%d/%m/%Y') }}{% else %}Sem base contratual anterior{% endif %}</dd>
   <dt class="col-sm-4">Mês contratual</dt><dd class="col-sm-8">{{ contract_month }}</dd>
   <dt class="col-sm-4">Fator PAO</dt><dd class="col-sm-8">{{ factor * 100 }}%</dd>
   <dt class="col-sm-4">Meta ajustada da simulação</dt><dd class="col-sm-8">{{ base_goal }} {{ '×' if direction == 'minimum' else '÷' }} {{ factor }} = {{ goal }}</dd>
@@ -60,7 +63,37 @@
 {% endfor %}
 </div>
 </section>
-<section class="card card-body mt-4" aria-labelledby="ura-import-title">
+<section class="mt-4" aria-labelledby="contract-evidence-title" data-apuracao-sha256="{{ digest }}">
+<h2 id="contract-evidence-title" class="h4">Memória e origem da apuração</h2>
+<p>Os cards mostram duas casas decimais. A avaliação da meta e os arquivos usam os valores completos abaixo.</p>
+<div class="contract-controls d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-outline-primary" href="/admin/contract/export?{{ export_query }}&amp;formato=xlsx">Exportar Excel</a>
+  <a class="btn btn-outline-primary" href="/admin/contract/export?{{ export_query }}&amp;formato=csv">Exportar CSV</a>
+  <a class="btn btn-outline-primary" href="/admin/contract/export?{{ export_query }}&amp;formato=json">Exportar JSON</a>
+  <button class="btn btn-outline-secondary" type="button" onclick="window.print()">Imprimir / salvar PDF</button>
+</div>
+<details class="contract-memory" open>
+<summary>Conferir valores completos, cobertura e arquivos de origem</summary>
+<div class="table-responsive"><table class="table mt-2">
+<caption>Valores completos usados na avaliação das metas</caption>
+<thead><tr><th>Indicador</th><th>Resultado (%)</th><th>Meta mínima (%)</th><th>Regra de origem</th></tr></thead>
+<tbody>{% for metric in ura.metrics %}<tr><th>{{ metric.code }}</th><td data-indicator="{{ metric.code }}" data-evidence-value="{{ metric.value if metric.value is not none else '' }}">{{ metric.value if metric.value is not none else 'Sem amostra' }}</td><td>{{ metric.goal }}</td><td>{{ metric.reference }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<div class="table-responsive"><table class="table">
+<caption>Cobertura registrada por serviço nesta competência</caption>
+<thead><tr><th>Serviço</th><th>Dias registrados</th><th>Dias sem registro</th></tr></thead>
+<tbody>{% for service in ura.coverage %}<tr><td>{{ service.id }} · {{ service.name }}</td><td>{{ service.registered_days }}</td><td>{{ service.missing_days }}</td></tr>{% else %}<tr><td colspan="3">Nenhum serviço com registros no filtro.</td></tr>{% endfor %}</tbody>
+</table></div>
+<h3 class="h5">Arquivos que compõem estes valores</h3>
+{% for source in ura.sources %}<p class="contract-hash">Importação #{{ source.id }} · {{ source.source_name }}<br>SHA-256: <code>{{ source.sha256 }}</code><br>Importado em UTC: {{ source.imported_at.isoformat() }} · {{ source.username }}</p>
+{% else %}<p>Sem arquivo de origem neste filtro.</p>{% endfor %}
+<p class="contract-hash">Assinatura da apuração: <code>{{ digest }}</code></p>
+<p>Se a série mudar após abrir esta tela, a exportação pede uma nova apuração para conservar a correspondência dos valores.</p>
+</details>
+<h3 class="h5 mt-3">Pendências para fechar o faturamento</h3>
+<ul>{% for pending in evidence.pending %}<li>{{ pending }}</li>{% endfor %}</ul>
+</section>
+<section class="card card-body mt-4 contract-controls" aria-labelledby="ura-import-title">
 <h2 id="ura-import-title" class="h4">Importar CSV diário da URA</h2>
 <p>Arquivo UTF-8 separado por ponto e vírgula, com 31 colunas. Reimportar o mesmo conteúdo conserva os registros. Conteúdo divergente para projeto/serviço/data é recusado sem sobrescrever a origem.</p>
 <form method="post" action="/admin/contract/ura">
@@ -79,7 +112,7 @@
   <button class="btn btn-primary mt-3" type="submit">Importar para {{ project }}</button>
 </form>
 </section>
-<section class="mt-4" aria-labelledby="ura-history-title">
+<section class="mt-4 contract-controls" aria-labelledby="ura-history-title">
 <h2 id="ura-history-title" class="h4">Últimas importações do projeto</h2>
 <div class="table-responsive"><table class="table">
 <thead><tr><th>Importação / origem</th><th>Registros</th><th>Novos</th><th>Existentes</th><th>SHA-256 do conteúdo</th></tr></thead>

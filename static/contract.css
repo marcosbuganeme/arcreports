@@ -1,0 +1,15 @@
+.contract-hash { overflow-wrap: anywhere; }
+.contract-memory summary { cursor: pointer; }
+.contract-memory td { overflow-wrap: anywhere; }
+@media print {
+  .sidebar, .contract-controls, nav, script { display: none !important; }
+  .app-shell { display: block !important; }
+  .content { margin: 0 !important; width: 100% !important; padding: 0 !important; }
+  .contract-memory > * { display: block !important; }
+  .contract-memory summary { display: none !important; }
+  .table-responsive { overflow: visible !important; }
+  .card { break-inside: avoid; }
+  #ura-result-title ~ .row > .col-md-6 { flex: 0 0 50%; width: 50%; }
+  h2, h3 { break-after: avoid; }
+  body { background: white !important; color: black !important; }
+}
