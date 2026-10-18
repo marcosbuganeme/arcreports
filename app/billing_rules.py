@@ -92,3 +92,12 @@ def knowledge_goal(period: Competence):
     from decimal import Decimal
     trimester = (contract_month(period) - 1) // 3
     return Decimal((60, 70, 80, 90, 95)[min(trimester, 4)])
+
+
+def staffing_window(period: Competence):
+    """Somente vigência/janela INS09/10; não presume denominador pendente."""
+    if contract_month(period) < 3:
+        return None
+    previous = Competence.containing(period.start - timedelta(days=1))
+    first = Competence.containing(previous.start - timedelta(days=1))
+    return first.start, period.end

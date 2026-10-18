@@ -68,3 +68,9 @@ def test_weighted_known_points(label, expected):
 def test_knowledge_progression_does_not_restart(label, goal):
     from app.billing_rules import knowledge_goal
     assert knowledge_goal(Competence.parse(label)) == goal
+
+
+@pytest.mark.parametrize('label,expected', [('2026-10',None),('2026-11',None),('2026-12',(date(2026,9,22),date(2026,12,21))),('2027-01',(date(2026,10,22),date(2027,1,21)))])
+def test_staffing_validity_and_three_competence_window(label, expected):
+    from app.billing_rules import staffing_window
+    assert staffing_window(Competence.parse(label)) == expected

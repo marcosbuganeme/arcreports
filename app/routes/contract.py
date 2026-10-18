@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.billing_rules import Competence, contract_month, pao_factor, decimal_value, adjusted_goal, weighted_points, knowledge_goal
+from app.billing_rules import Competence, contract_month, pao_factor, decimal_value, adjusted_goal, weighted_points, knowledge_goal, staffing_window
 from app.database import get_db
 from app.routes.common import render
 from app.security import require_admin
@@ -19,7 +19,7 @@ def contract_context(params):
     direction = params.get('direcao') or 'minimum'
     base_points = decimal_value(params.get('pontos_base') or '0')
     return {'period': period, 'contract_month': contract_month(period), 'factor': pao_factor(period),
-            'knowledge_goal': knowledge_goal(period), 'trimester': (contract_month(period) - 1) // 3 + 1,
+            'staffing_window': staffing_window(period), 'knowledge_goal': knowledge_goal(period), 'trimester': (contract_month(period) - 1) // 3 + 1,
             'base_points': base_points, 'weighted_points': weighted_points(base_points, period),
             'base_goal': base_goal, 'direction': direction, 'goal': adjusted_goal(base_goal, direction, period)}
 
