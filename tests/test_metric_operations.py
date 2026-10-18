@@ -41,3 +41,13 @@ def test_gauge_uses_new_metric_instead_of_partition(monkeypatch):
     assert result['status'] == 'ok'
     assert result['metric']['numerator'] == 767
     assert result['metric']['denominator'] == 779
+
+
+def test_numeric_average_keeps_measured_precision(monkeypatch):
+    widget = SimpleNamespace(gauge_mode='value',goal_direction='maximum',meta_gauge=1)
+    monkeypatch.setattr(dashboard, 'execute_gauge_values', lambda *_: (Decimal('0.3333333333333333333333333333'),))
+    result = {}
+    dashboard.apply_widget_gauge(result,widget,'day',date(2026,9,22),date(2026,10,21))
+    assert result['metric']['state'] == 'measured'
+    assert result['metric']['value'] == Decimal('0.3333333333333333333333333333')
+    assert result['status'] == 'ok'
