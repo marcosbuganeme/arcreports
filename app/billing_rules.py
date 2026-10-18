@@ -81,3 +81,7 @@ def adjusted_goal(base, direction: str, period: Competence):
         raise ValueError('Direção da meta inválida.')
     factor = pao_factor(period)
     return base * factor if direction == 'minimum' else base / factor
+
+
+def weighted_points(base_points, period: Competence):
+    return decimal_value(base_points) * pao_factor(period)

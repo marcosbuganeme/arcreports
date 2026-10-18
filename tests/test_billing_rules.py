@@ -55,3 +55,10 @@ def test_reject_invalid_decimal(value):
     from app.billing_rules import decimal_value
     with pytest.raises(ValueError):
         decimal_value(value)
+
+
+@pytest.mark.parametrize('label,expected', [('2026-10','25'),('2026-12','35'),('2027-02','40'),('2027-04','50')])
+def test_weighted_known_points(label, expected):
+    from app.billing_rules import weighted_points
+    from decimal import Decimal
+    assert weighted_points('50', Competence.parse(label)) == Decimal(expected)
