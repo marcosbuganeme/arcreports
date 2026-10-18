@@ -133,6 +133,13 @@ def _no_data(code, scope, period, base_goal, direction, reason, priority=None):
     return _row(code, scope, {'state': 'no_data', 'goal': goal, 'missing': [reason]}, direction, base_goal, period, priority)
 
 
+def _sla_note(code, measurement):
+    note = f"{measurement['without_sla']} sem SLA"
+    if code != 'INS02':
+        note += f" e {measurement['no_resolution_category']} em categoria sem prazo de solução"
+    return note + ' fora do denominador'
+
+
 def indicator_rows(db, period, glpi, glpi_error, ura):
     rows = []
     for scope in ('item01', 'item02', 'geral'):
@@ -144,7 +151,7 @@ def indicator_rows(db, period, glpi, glpi_error, ura):
             if code in ('INS02', 'INS03', 'INS04'):
                 for p in PRIORITIES:
                     rows.append(_row(code, scope, data[code][p], direction, base, period, p,
-                                     note=f"{data[code][p]['without_sla']} sem SLA fora do denominador" if data else None)
+                                     note=_sla_note(code, data[code][p]) if data else None)
                                 if data else _no_data(code, scope, period, base, direction, glpi_error, p))
             else:
                 note = None
@@ -283,9 +290,6 @@ def pending_items(result):
         if result['glpi']['reopen_provisional']:
             items.append(('INS05', 'Provisório: reaberturas de conclusões do fim da competência só fecham em '
                           + result['glpi']['reopen_window_end'].strftime('%d/%m/%Y %H:%M') + ' (4 dias úteis).'))
-        if result['trs45']:
-            items.append(('TRS45', 'Chamado que termina em categoria sem prazo de solução continua na conta pelo prazo gravado '
-                          'no GLPI (pergunta 11 à contratada).'))
     items.append(('INS05', 'Denominador com todos os chamados concluídos, inclusive os sem SLA (a confirmar).'))
     items.append(('P1+P2', 'Excedentes do limite de 60% (os últimos abertos) ficam com prazo e faixa de P3; resposta da contratada '
                   'de 18/10/2026, a confirmar com o Detran.'))

@@ -137,7 +137,7 @@ def test_full_apuracao_page_and_stable_export(client_factory):
     evidence = client.get(json_url).json()
     assert evidence['apuracao']['cut'] == '2026-10-21T18:00:00'
     assert any(p.startswith('P1+P2: Excedentes') for p in evidence['pending'])
-    assert not any(p.startswith('INS01:') for p in evidence['pending'])
+    assert not any(p.startswith('TRS45:') or p.startswith('INS01:') for p in evidence['pending'])
     moved = client.get(json_url.replace('corte=2026-10-21T18%3A00', 'corte=2026-10-21T19%3A00'))
     assert moved.status_code == 409
 

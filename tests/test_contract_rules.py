@@ -339,6 +339,22 @@ def test_pending_status_pauses_trs45_clock(db_session):
     assert result['trs45'][0]['net_seconds'] == 26 * 3600
 
 
+def test_final_category_without_resolution_sla_leaves_trs45_ins03_and_ins04(db_session):
+    holidays = seeded(db_session)
+    tickets = [ticket(50, '2026-10-05 08:00:00', '2026-10-07 10:00:00', ttr='2026-10-05 12:00:00', priority=3),
+               ticket(51, '2026-10-05 08:00:00', '2026-10-07 10:00:00', ttr='2026-10-05 12:00:00', priority=3),
+               ticket(52, '2026-10-05 08:00:00', '2026-10-07 10:00:00', ttr='2026-10-05 12:00:00', priority=3, type=2)]
+    for row, category in zip(tickets, ('1515', '1400', '1637')):
+        row['itilcategories_id'] = category
+    snapshot = GlpiSnapshot(tickets=tickets, logs=[], slas=SLAS, cut=datetime(2026, 10, 7, 12),
+                            categories={1515: 'CAT-DTGO-0032', 1400: 'CAT-DTGO-0001', 1637: 'cat-dtgo-0356'})
+    result = evaluate(snapshot, OCT, holidays, {4: 'item01'})
+    assert [t['ticket'] for t in result['trs45']] == [51]
+    ins03, ins04 = result['scopes']['item01']['INS03']['P3'], result['scopes']['item01']['INS04']['P3']
+    assert (ins03['denominator'], ins03['no_resolution_category'], ins03['without_sla'], ins03['late']) == (1, 1, 0, [51])
+    assert (ins04['denominator'], ins04['no_resolution_category'], ins04['state']) == (0, 1, 'no_sample')
+    assert result['diagnostics']['category_without_resolution_sla'] == [50, 52]
+
 
 def test_reopening_after_competence_end_counts_in_the_concluding_competence(db_session):
     holidays = seeded(db_session)

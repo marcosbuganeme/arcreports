@@ -9,6 +9,9 @@ SLA gravado no GLPI e chamado sem SLA fora do denominador; prioridade GLPI 5/4/3
 Respostas de 18/10/2026: TRS45 só de chamado solucionado, uma vez, na competência da solução;
 INS02 conta os iniciados no prazo e o chamado sem data de assumido conta como iniciado no prazo;
 limite de 60% de P1+P2 por item, e os últimos abertos acima dele passam ao prazo de P3.
+Resposta de 18/10/2026 à pergunta 11: chamado cuja categoria final está na regra 455 do GLPI
+("Categorias sem SLA de Solução") sai do TRS45, do INS03 e do INS04, mesmo com o prazo de solução
+que o GLPI deixou gravado; a regra casa pelo código da categoria.
 """
 import bisect
 from dataclasses import dataclass, field
@@ -38,6 +41,8 @@ REOPEN_LOOKAHEAD = timedelta(days=14)
 HIGH_PRIORITY_LIMIT = Decimal(60)
 P3_OWN_SECONDS = 3600
 P3_RESOLVE_SECONDS = {INCIDENT: 6 * 3600, REQUEST: 12 * 3600}
+NO_RESOLUTION_CATEGORIES = frozenset(f'CAT-DTGO-{n:04d}' for n in (27, 32, 33, 34, 35, 309, 310, 311, 312, 333, 334, 335, 336, 337,
+                                                                  338, 339, 340, 341, 342, 343, 344, 356, 357, 358, 359))
 
 
 def to_int(value, default=0):
@@ -70,6 +75,7 @@ class GlpiSnapshot:
     knowledge_links: set = field(default_factory=set)
     item_links: set = field(default_factory=set)
     zabbix_requesters: set = field(default_factory=set)
+    categories: dict = field(default_factory=dict)
     cut: datetime | None = None
     observed: datetime | None = None
 
@@ -126,6 +132,8 @@ class Ticket:
         self.original_priority = self.priority
         self.downgraded = False
         self.type = to_int(row.get('type'))
+        self.category = to_int(row.get('itilcategories_id'))
+        self.no_resolution_category = False
         self.sla_tto = to_int(row.get('slas_id_tto'))
         self.sla_ttr = to_int(row.get('slas_id_ttr'))
         self.begin_waiting = to_datetime(row.get('begin_waiting_date'))
@@ -173,6 +181,8 @@ class Ticket:
         return total
 
     def resolve_limit(self, slas):
+        if self.no_resolution_category:
+            return None
         limit = sla_seconds(slas.get(self.sla_ttr)) if self.sla_ttr else None
         if limit and self.downgraded:
             return P3_RESOLVE_SECONDS.get(self.type)
@@ -234,6 +244,7 @@ def evaluate(snapshot: GlpiSnapshot, period: Competence, holidays, entity_invoic
             diagnostics['deleted'] += 1
             continue
         ticket = Ticket(row, logs.get(to_int(row['id']), []), snapshot.zabbix_requesters)
+        ticket.no_resolution_category = str(snapshot.categories.get(ticket.category) or '').strip().upper() in NO_RESOLUTION_CATEGORIES
         if ticket.opened is None or ticket.opened < CONTRACT_OPENING:
             diagnostics['excluded_before_contract'] += 1
             continue
@@ -269,6 +280,7 @@ def evaluate(snapshot: GlpiSnapshot, period: Competence, holidays, entity_invoic
         'invalid_priority': sorted(t.id for t in solved if t.priority is None),
         'unassigned_entity': sorted(t.id for t in solved if scope_of(t, entity_invoice) == 'nao_atribuido'),
         'transferred': sorted(t.id for t in solved if t.entity_logs),
+        'category_without_resolution_sla': sorted(t.id for t in solved if t.no_resolution_category and t.sla_ttr),
         'zabbix_with_business_sla': sorted(t.id for t in solved if t.zabbix and t.sla_ttr and
                                            to_int(sla_by_id.get(t.sla_ttr, {}).get('calendars_id')) not in CALENDARS_24X7),
         'unsupported_sla': sorted(t.id for t in tickets if t.sla_ttr and sla_seconds(slas.get(t.sla_ttr)) is None),
@@ -297,10 +309,12 @@ def _scope(cohort, tickets, scope, entity_invoice, period, start, cut, holidays,
         by_priority = {}
         for p in PRIORITIES:
             group = [t for t in valid if t.priority == p and t.type == kind]
-            with_sla = [t for t in group if t.sla_ttr and t.time_to_resolve]
+            excluded = sum(1 for t in group if t.no_resolution_category)
+            with_sla = [t for t in group if t.sla_ttr and t.time_to_resolve and not t.no_resolution_category]
             on_time = [t for t in with_sla if t.solved_on_time(clock)]
             by_priority[p] = {**_ratio(len(on_time), len(with_sla), goal95), 'total': len(group),
-                              'without_sla': len(group) - len(with_sla), 'without_event': 0,
+                              'without_sla': len(group) - len(with_sla) - excluded, 'no_resolution_category': excluded,
+                              'without_event': 0,
                               'late': sorted(t.id for t in with_sla if not t.solved_on_time(clock))}
         out[code] = by_priority
     end = datetime.combine(period.end + timedelta(days=1), time.min)
@@ -336,9 +350,9 @@ def _scope(cohort, tickets, scope, entity_invoice, period, start, cut, holidays,
 
 
 REQUIRED_TABLES = ('glpi_tickets', 'glpi_logs', 'glpi_slas', 'glpi_tickets_users')
-OPTIONAL_TABLES = ('glpi_ticketsatisfactions', 'glpi_items_tickets', 'glpi_knowbaseitems_items')
+OPTIONAL_TABLES = ('glpi_ticketsatisfactions', 'glpi_items_tickets', 'glpi_knowbaseitems_items', 'glpi_itilcategories')
 TICKET_COLUMNS = ('id', 'entities_id', 'date', 'solvedate', 'takeintoaccountdate', 'time_to_own', 'time_to_resolve', 'status',
-                  'priority', 'type', 'requesttypes_id', 'is_deleted', 'slas_id_tto', 'slas_id_ttr', 'begin_waiting_date')
+                  'priority', 'type', 'requesttypes_id', 'is_deleted', 'slas_id_tto', 'slas_id_ttr', 'begin_waiting_date', 'itilcategories_id')
 
 
 def load_snapshot(connection, database, period: Competence, cut: datetime, observed: datetime | None = None):
@@ -388,8 +402,11 @@ def load_snapshot(connection, database, period: Competence, cut: datetime, obser
             knowledge |= {to_int(v) for v in connection.execute(text(
                 f"SELECT `items_id` FROM {db}.`glpi_knowbaseitems_items` WHERE `itemtype` = 'Ticket' AND `items_id` IN ({marks})"),
                 chunk).scalars()}
+    categories = {}
+    if 'glpi_itilcategories' in tables:
+        categories = {to_int(i): c for i, c in connection.execute(text(f"SELECT `id`, `code` FROM {db}.`glpi_itilcategories`"))}
     slas = [dict(r) for r in connection.execute(text(
         f"SELECT `id`, `name`, `number_time`, `definition_time`, `end_of_working_day`, `calendars_id` FROM {db}.`glpi_slas`")).mappings()]
     snapshot = GlpiSnapshot(tickets=tickets, logs=logs, slas=slas, satisfactions=satisfactions, knowledge_links=knowledge,
-                            item_links=items, zabbix_requesters=zabbix, cut=cut, observed=observed_until)
+                            item_links=items, zabbix_requesters=zabbix, categories=categories, cut=cut, observed=observed_until)
     return snapshot, [t for t in OPTIONAL_TABLES if t not in tables]

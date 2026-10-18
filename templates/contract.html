@@ -91,6 +91,7 @@
 <li>Prioridade fora de 2 a 5: {{ a.glpi.diagnostics.invalid_priority | length }}{% if a.glpi.diagnostics.invalid_priority %} ({{ a.glpi.diagnostics.invalid_priority[:30] | join(', ') }}){% endif %}.</li>
 <li>Entidade sem fatura: {{ a.glpi.diagnostics.unassigned_entity | length }} · transferidos entre entidades: {{ a.glpi.diagnostics.transferred | length }}.</li>
 <li>Zabbix com SLA em horário comercial: {{ a.glpi.diagnostics.zabbix_with_business_sla | length }}{% if a.glpi.diagnostics.zabbix_with_business_sla %} ({{ a.glpi.diagnostics.zabbix_with_business_sla[:30] | join(', ') }}){% endif %} · SLA em unidade não suportada: {{ a.glpi.diagnostics.unsupported_sla | length }}.</li>
+<li>Categoria final sem prazo de solução (regra 455 do GLPI), fora do TRS45, do INS03 e do INS04 apesar do prazo gravado: {{ a.glpi.diagnostics.category_without_resolution_sla | length }}{% if a.glpi.diagnostics.category_without_resolution_sla %} ({{ a.glpi.diagnostics.category_without_resolution_sla[:30] | join(', ') }}){% endif %}.</li>
 {% if a.glpi_missing_tables %}<li>Tabelas ausentes na cópia local: {{ a.glpi_missing_tables | join(', ') }}.</li>{% endif %}
 </ul>
 {% endif %}
