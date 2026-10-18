@@ -62,3 +62,9 @@ def test_weighted_known_points(label, expected):
     from app.billing_rules import weighted_points
     from decimal import Decimal
     assert weighted_points('50', Competence.parse(label)) == Decimal(expected)
+
+
+@pytest.mark.parametrize('label,goal', [('2026-10',60),('2026-12',60),('2027-01',70),('2027-04',80),('2027-07',90),('2027-10',95),('2029-10',95)])
+def test_knowledge_progression_does_not_restart(label, goal):
+    from app.billing_rules import knowledge_goal
+    assert knowledge_goal(Competence.parse(label)) == goal

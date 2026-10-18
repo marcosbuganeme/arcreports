@@ -85,3 +85,10 @@ def adjusted_goal(base, direction: str, period: Competence):
 
 def weighted_points(base_points, period: Competence):
     return decimal_value(base_points) * pao_factor(period)
+
+
+def knowledge_goal(period: Competence):
+    """INS06/07: trimestre contínuo, sem reaplicar PAO à meta."""
+    from decimal import Decimal
+    trimester = (contract_month(period) - 1) // 3
+    return Decimal((60, 70, 80, 90, 95)[min(trimester, 4)])
