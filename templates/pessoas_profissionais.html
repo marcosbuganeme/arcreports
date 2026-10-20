@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% macro opcoes_posicao(selecionada=None) -%}
+  <option value="">Selecione…</option>
+  {% for p in posicoes %}
+  <option value="{{ p.id }}" {{ 'selected' if p.id == selecionada else '' }}>{{ '%02d' % p.numero }} · Eq. {{ p.equipe }} · {{ p.perfil }}</option>
+  {% endfor %}
+{%- endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pessoas · Profissionais</h1>
+    <p>Quem ocupa cada posição do quadro mínimo, com entrada, saída e certificações. Guarde só o necessário (LGPD).</p>
+  </div>
+</div>
+
+{{ m.tabs(active_tab) }}
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Novo profissional</h2>
+  <form method="post" action="/pessoas/profissionais" class="pessoas-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div><label class="form-label" for="nome">Nome</label><input class="form-control" id="nome" name="nome" maxlength="160" required></div>
+    <div style="grid-column:span 2"><label class="form-label" for="posicao_id">Posição</label><select class="form-select" id="posicao_id" name="posicao_id" required>{{ opcoes_posicao() }}</select></div>
+    <div><label class="form-label" for="data_entrada">Entrada</label><input class="form-control" type="date" id="data_entrada" name="data_entrada" required></div>
+    <div><button class="btn btn-primary" type="submit">Cadastrar</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+    <h2 style="font-size:18px;margin:0">{{ 'Todos os profissionais' if mostrar == 'todos' else 'Profissionais ativos' }} ({{ profissionais|length }})</h2>
+    <a href="/pessoas/profissionais?mostrar={{ 'ativos' if mostrar == 'todos' else 'todos' }}">{{ 'Mostrar só ativos' if mostrar == 'todos' else 'Mostrar também os que saíram' }}</a>
+  </div>
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>#</th><th>Nome</th><th>Perfil</th><th>Entrada</th><th>Saída</th><th>Certificações</th><th></th></tr></thead>
+      <tbody>
+        {% for p in profissionais %}
+        <tr>
+          <td>{{ '%02d' % p.posicao.numero }}</td>
+          <td>{{ p.nome }}</td>
+          <td>{{ p.posicao.perfil }} <span class="muted" style="font-size:11px">Eq. {{ p.posicao.equipe }}</span></td>
+          <td>{{ p.data_entrada.strftime('%d/%m/%Y') }}</td>
+          <td>{% if p.data_saida %}{{ p.data_saida.strftime('%d/%m/%Y') }} <span class="muted" style="font-size:11px">{{ p.motivo_saida }}</span>{% else %}—{% endif %}</td>
+          <td>
+            {% for c in p.certificacoes %}
+              {% if c.data_validade and c.data_validade < hoje %}<span class="status-badge status-error" title="Vencida">{{ c.nome }}</span>
+              {% else %}<span class="status-badge status-none">{{ c.nome }}</span>{% endif %}
+            {% else %}<span class="muted" style="font-size:12px">—</span>{% endfor %}
+          </td>
+          <td class="n"><a href="/pessoas/profissionais?editar={{ p.id }}{{ '&mostrar=todos' if mostrar == 'todos' else '' }}#editar">Editar</a></td>
+        </tr>
+        {% if editar_id == p.id %}
+        <tr id="editar">
+          <td colspan="7" style="background:#f8fafc;padding:16px">
+            <form method="post" action="/pessoas/profissionais/{{ p.id }}" class="pessoas-form-grid">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div><label class="form-label">Nome</label><input class="form-control" name="nome" value="{{ p.nome }}" maxlength="160" required></div>
+              <div style="grid-column:span 2"><label class="form-label">Posição</label><select class="form-select" name="posicao_id" required>{{ opcoes_posicao(p.posicao_id) }}</select></div>
+              <div><label class="form-label">Entrada</label><input class="form-control" type="date" name="data_entrada" value="{{ p.data_entrada.isoformat() }}" required></div>
+              <div><label class="form-label">Saída</label><input class="form-control" type="date" name="data_saida" value="{{ p.data_saida.isoformat() if p.data_saida else '' }}"></div>
+              <div>
+                <label class="form-label">Motivo da saída</label>
+                <select class="form-select" name="motivo_saida">
+                  <option value="">—</option>
+                  {% for mo in motivos %}<option {{ 'selected' if mo == p.motivo_saida else '' }}>{{ mo }}</option>{% endfor %}
+                </select>
+              </div>
+              <div><button class="btn btn-primary" type="submit">Salvar</button></div>
+            </form>
+            <p class="pessoas-note">Para trocar a pessoa de posição, registre a saída com motivo "Remanejamento interno" e cadastre-a de novo na nova posição: assim o histórico do INS11 fica correto.</p>
+
+            <h3 style="font-size:15px;margin:18px 0 8px">Certificações</h3>
+            {% if p.certificacoes %}
+            <table class="pessoas-table" style="max-width:640px">
+              <tbody>
+                {% for c in p.certificacoes %}
+                <tr>
+                  <td>{{ c.nome }}</td>
+                  <td>{% if c.data_validade %}válida até {{ c.data_validade.strftime('%d/%m/%Y') }}{% else %}sem validade{% endif %}</td>
+                  <td class="n">
+                    <form method="post" action="/pessoas/certificacoes/{{ c.id }}/delete" class="pessoas-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+            <form method="post" action="/pessoas/profissionais/{{ p.id }}/certificacoes" class="pessoas-form-grid" style="margin-top:10px;max-width:640px">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <div><label class="form-label">Certificação</label><input class="form-control" name="nome" maxlength="160" placeholder="Ex.: ITIL 4 Foundation" required></div>
+              <div><label class="form-label">Validade</label><input class="form-control" type="date" name="data_validade"></div>
+              <div><button class="btn btn-outline-primary" type="submit">Adicionar</button></div>
+            </form>
+
+            <details style="margin-top:18px">
+              <summary class="muted" style="cursor:pointer;font-size:13px">Excluir profissional</summary>
+              <form method="post" action="/pessoas/profissionais/{{ p.id }}/delete" style="margin-top:8px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <p class="pessoas-note">Apaga também as ausências e certificações dele. Para quem saiu do contrato, prefira registrar a saída: a exclusão muda o INS11 e a rotatividade de meses passados.</p>
+                <button class="btn btn-sm btn-danger" type="submit">Excluir definitivamente</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="7"><div class="empty-state">Nenhum profissional cadastrado.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pessoas · Parâmetros do mês</h1>
+    <p>Feriados, mês de execução do contrato, leitura do PAO e valores mensais dos itens usados na glosa do INS11.</p>
+  </div>
+</div>
+
+{{ m.tabs(active_tab, competencia) }}
+
+<section class="panel">
+  <form method="post" action="/pessoas/parametros" class="pessoas-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div><label class="form-label" for="competencia">Competência</label><input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}" required></div>
+    <div><label class="form-label" for="mes_execucao">Mês de execução do contrato</label><input class="form-control" type="number" min="1" max="60" id="mes_execucao" name="mes_execucao" value="{{ parametro.mes_execucao if parametro else 1 }}"></div>
+    <div style="grid-column:span 2"><label class="form-label" for="feriados">Feriados (dd/mm/aaaa, separados por vírgula)</label><input class="form-control" id="feriados" name="feriados" value="{% if parametro and parametro.feriados %}{% for f in parametro.feriados.split(',') %}{{ f[8:10] }}/{{ f[5:7] }}/{{ f[0:4] }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}" placeholder="12/10/2026, 02/11/2026"></div>
+    <div style="grid-column:span 2">
+      <label class="form-label" for="leitura_pao">Leitura do PAO</label>
+      <select class="form-select" id="leitura_pao" name="leitura_pao">
+        {% for chave, nome in leituras.items() %}<option value="{{ chave }}" {{ 'selected' if (parametro.leitura_pao if parametro else 'C') == chave else '' }}>{{ chave }} · {{ nome }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label class="form-label" for="valor_item1">Valor mensal Item 01 (R$)</label><input class="form-control" id="valor_item1" name="valor_item1" inputmode="decimal" value="{{ m.num(parametro.valor_item1|float) if parametro and parametro.valor_item1 is not none else '' }}" placeholder="a confirmar (OS 30)"></div>
+    <div><label class="form-label" for="valor_item2">Valor mensal Item 02 (R$)</label><input class="form-control" id="valor_item2" name="valor_item2" inputmode="decimal" value="{{ m.num(parametro.valor_item2|float) if parametro and parametro.valor_item2 is not none else '' }}" placeholder="a confirmar (OS 30)"></div>
+    <div><button class="btn btn-primary" type="submit">Salvar</button></div>
+  </form>
+  <p class="pessoas-note">
+    {{ competencia }} tem {{ dias_uteis }} dias úteis com os feriados salvos. Fator do PAO: meses 1–2 = 50%, 3–4 = 70%, 5–6 = 80%, depois 100%.
+    Leitura A: meta de 98% e pontos × fator. B: meta × fator, pontos cheios. C: meta e pontos × fator (texto literal da OS 29).
+    Sem valor do item, o painel mostra o percentual e os pontos, mas não a glosa em reais.
+  </p>
+</section>
+
+{% if historico %}
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Competências cadastradas</h2>
+  <table class="pessoas-table">
+    <thead><tr><th>Competência</th><th class="n">Mês de execução</th><th>Leitura</th><th class="n">Item 01</th><th class="n">Item 02</th><th>Feriados</th></tr></thead>
+    <tbody>
+      {% for h in historico %}
+      <tr>
+        <td><a href="/pessoas/parametros?competencia={{ h.competencia }}">{{ h.competencia }}</a></td>
+        <td class="n">{{ h.mes_execucao }}</td>
+        <td>{{ h.leitura_pao }}</td>
+        <td class="n">{{ m.money(h.valor_item1|float if h.valor_item1 is not none else none) }}</td>
+        <td class="n">{{ m.money(h.valor_item2|float if h.valor_item2 is not none else none) }}</td>
+        <td>{{ (h.feriados or '').split(',')|reject('equalto', '')|list|length }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

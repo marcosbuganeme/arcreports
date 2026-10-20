@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from email.parser import BytesParser
 from email.policy import default
 from pathlib import Path
@@ -34,7 +35,16 @@ DEFAULT_APPEARANCE = {
     "login_btn_text": "Entrar",
     "font_family": "system-ui, sans-serif",
     "font_size": "normal",
+    "theme_sidebar_color": "#172033",
+    "theme_accent_color": "#2563eb",
 }
+
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def clean_hex_color(value: object, fallback: str) -> str:
+    candidate = str(value or "").strip()
+    return candidate.lower() if HEX_COLOR_RE.match(candidate) else fallback
 
 PDF_CONFIG_KEYS = ("pdf_logo", "pdf_titulo", "pdf_subtitulo", "pdf_rodape")
 
@@ -284,6 +294,14 @@ async def update_appearance(request: Request, db: Session = Depends(get_db)):
         "login_btn_text": str(form.get("login_btn_text", DEFAULT_APPEARANCE["login_btn_text"]) or DEFAULT_APPEARANCE["login_btn_text"]),
         "font_family": str(form.get("font_family", DEFAULT_APPEARANCE["font_family"]) or DEFAULT_APPEARANCE["font_family"]),
         "font_size": str(form.get("font_size", DEFAULT_APPEARANCE["font_size"]) or DEFAULT_APPEARANCE["font_size"]),
+        "theme_sidebar_color": clean_hex_color(
+            form.get("theme_sidebar_color"),
+            current_appearance.get("theme_sidebar_color", DEFAULT_APPEARANCE["theme_sidebar_color"]),
+        ),
+        "theme_accent_color": clean_hex_color(
+            form.get("theme_accent_color"),
+            current_appearance.get("theme_accent_color", DEFAULT_APPEARANCE["theme_accent_color"]),
+        ),
     }
 
     for key, value in values.items():

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>TRS · Apuração do mês</h1>
+    <p>Indicadores (INS) + Termos de Serviço (TRS) da competência, com o fator do PAO e o teto de 30% (TR 8.29 e 10.7).</p>
+  </div>
+  <form method="get" action="/trs/apuracao" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.trs_tabs(active_tab, competencia) }}
+
+<div class="pessoas-cards">
+  <section class="panel">
+    <span class="muted" style="font-size:12px">Glosa estimada · {{ competencia }} · mês de execução {{ mes_execucao }} (fator {{ (fator * 100)|round|int }}%)</span>
+    <div class="pessoas-big" style="margin-top:6px">{{ m.num(glosa_pct) }}%</div>
+    {% if no_teto %}<span class="status-badge status-error">No teto de 30% (calculado: {{ m.num(ajuste_pct) }}%)</span>{% endif %}
+    <dl class="pessoas-kv">
+      <dt>Pontos ponderados dos indicadores (INS)</dt><dd>{{ m.num(ins_ponderados, 1) }}</dd>
+      <dt>Pontos ponderados dos TRS</dt><dd>{{ m.num(trs_ponderados, 1) }}</dd>
+      <dt>dos quais em contestação</dt><dd>{{ m.num(trs_contestados, 1) }}</dd>
+      <dt><strong>Total</strong></dt><dd><strong>{{ m.num(total_ponderado, 1) }}</strong></dd>
+      <dt>Valor mensal (Itens 01 + 02)</dt><dd>{{ m.money(valor_mensal) }}</dd>
+      <dt><strong>Glosa estimada em R$</strong></dt><dd><strong>{{ m.money(glosa_valor) }}</strong></dd>
+    </dl>
+    <p class="pessoas-note">Ajuste = Σ pontos ÷ 10 (cada 5 pontos = 0,5% do valor mensal). Estimativa gerencial: não substitui a apuração do fiscal. Valores dos itens vêm de Pessoas → Parâmetros do mês.</p>
+  </section>
+
+  <section class="panel">
+    <span class="muted" style="font-size:12px">Datas de controle (alimentam as sugestões de TRS17 e TRS29)</span>
+    <form method="post" action="/trs/controles" style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="competencia" value="{{ competencia }}">
+      <label class="form-label" for="relatorio_entregue">Relatório Geral de Faturamento de {{ relatorio_competencia }} entregue em</label>
+      <input class="form-control" type="date" id="relatorio_entregue" name="relatorio_entregue" value="{{ relatorio_entregue }}">
+      <label class="form-label" for="cmdb_implantado" style="margin-top:10px">CMDB integrado ao ITSM implantado em</label>
+      <input class="form-control" type="date" id="cmdb_implantado" name="cmdb_implantado" value="{{ cmdb_implantado }}">
+      <button class="btn btn-outline-primary" type="submit" style="margin-top:12px">Salvar datas</button>
+    </form>
+    <p class="pessoas-note">Prazo do relatório: 5º dia útil do mês seguinte (TRS17). Prazo do CMDB: 60 dias do início da prestação, 21/11/2026 (TRS29).</p>
+  </section>
+</div>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Termos de Serviço em {{ competencia }}</h2>
+  {% if linhas_trs %}
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>TRS</th><th>Descrição</th><th class="n">Registros</th><th class="n">Qtd. que conta</th><th class="n">Pontos</th><th class="n">Ponderados</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for l in linhas_trs %}
+        <tr>
+          <td class="trs-cod">{{ l.codigo }}</td>
+          <td class="trs-desc">{{ l.tipo.descricao[:120] }}{{ '…' if l.tipo.descricao|length > 120 else '' }}</td>
+          <td class="n">{{ l.registros }}</td>
+          <td class="n">{{ l.quantidade }}</td>
+          <td class="n">{{ l.pontos }}</td>
+          <td class="n">{{ m.num(l.ponderados, 1) }}</td>
+          <td class="trs-desc" style="white-space:nowrap">
+            {% set partes = [] %}
+            {% if l.abertos %}{% set _ = partes.append(l.abertos ~ ' em aberto') %}{% endif %}
+            {% if l.contestados %}{% set _ = partes.append(l.contestados ~ ' contestada(s)') %}{% endif %}
+            {% if l.confirmados %}{% set _ = partes.append(l.confirmados ~ ' confirmada(s)') %}{% endif %}
+            {% if l.cancelados %}{% set _ = partes.append(l.cancelados ~ ' cancelada(s)') %}{% endif %}
+            {% if l.notificacoes %}{% set _ = partes.append(l.notificacoes ~ ' notificação(ões)') %}{% endif %}
+            {{ partes|join(' · ') }}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr><td colspan="4"><strong>Total TRS</strong></td><td class="n"><strong>{{ trs_brutos }}</strong></td><td class="n"><strong>{{ m.num(trs_ponderados, 1) }}</strong></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Nenhum TRS registrado nesta competência.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Indicadores (INS) em {{ competencia }}</h2>
+  {% if aviso_ins %}<div class="alert alert-warning">{{ aviso_ins }}</div>{% endif %}
+  {% if linhas_ins %}
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>Indicador</th><th class="n">Resultado</th><th class="n">Meta</th><th class="n">Pontos</th><th class="n">Ponderados</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for l in linhas_ins %}
+        <tr>
+          <td>{{ l.indicador }}</td>
+          <td class="n">{{ l.valor }}%</td>
+          <td class="n">{{ l.sentido }} {{ l.meta }}%</td>
+          <td class="n">{{ l.pontos }}</td>
+          <td class="n">{{ l.pontos_ponderados }}</td>
+          <td><span class="status-badge {{ 'status-error' if l.situacao == 'Fora da meta' else 'status-success' }}">{{ l.situacao }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="pessoas-note">Fonte: relatório "NMS TR - Apuração mensal por indicador" (atualizado às 07:15, 13:15 e 19:15).</p>
+  {% elif not aviso_ins %}
+  <div class="empty-state">Sem indicadores apurados nesta competência.</div>
+  {% endif %}
+</section>
+{% endblock %}

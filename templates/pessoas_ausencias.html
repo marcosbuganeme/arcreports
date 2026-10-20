@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pessoas · Ausências</h1>
+    <p>Férias, atestados, faltas e vagas abertas. A ausência só é coberta com substituto do mesmo perfil e qualificado (TR 6.34.7).</p>
+  </div>
+  <form method="get" action="/pessoas/ausencias" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.tabs(active_tab, competencia) }}
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Registrar ausência</h2>
+  <form method="post" action="/pessoas/ausencias" class="pessoas-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="grid-column:span 2">
+      <label class="form-label" for="profissional_id">Profissional</label>
+      <select class="form-select" id="profissional_id" name="profissional_id">
+        <option value="">— posição vaga (escolha ao lado) —</option>
+        {% for p in profissionais %}<option value="{{ p.id }}">{{ p.nome }} · {{ '%02d' % p.posicao.numero }} {{ p.posicao.perfil }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="grid-column:span 2">
+      <label class="form-label" for="posicao_id">Posição vaga</label>
+      <select class="form-select" id="posicao_id" name="posicao_id">
+        <option value="">— só se não houver profissional —</option>
+        {% for p in posicoes %}<option value="{{ p.id }}">{{ '%02d' % p.numero }} · Eq. {{ p.equipe }} · {{ p.perfil }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label" for="tipo">Tipo</label>
+      <select class="form-select" id="tipo" name="tipo" required>{% for t in tipos %}<option>{{ t }}</option>{% endfor %}</select>
+    </div>
+    <div><label class="form-label" for="data_inicio">Início</label><input class="form-control" type="date" id="data_inicio" name="data_inicio" required></div>
+    <div><label class="form-label" for="data_fim">Fim</label><input class="form-control" type="date" id="data_fim" name="data_fim"></div>
+    <div><label class="form-label" for="substituto_nome">Substituto</label><input class="form-control" id="substituto_nome" name="substituto_nome" maxlength="160"></div>
+    <div>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="substituto_mesmo_perfil"> <span class="form-check-label">Mesmo perfil</span></label>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="substituto_qualificado"> <span class="form-check-label">Qualificado</span></label>
+    </div>
+    <div><label class="form-label" for="comunicado_em">Comunicado ao DETRAN em</label><input class="form-control" type="date" id="comunicado_em" name="comunicado_em"></div>
+    <div style="grid-column:span 2"><label class="form-label" for="observacao">Observação</label><input class="form-control" id="observacao" name="observacao" maxlength="255" placeholder="Sem dados de saúde (LGPD)"></div>
+    <div><button class="btn btn-primary" type="submit">Registrar</button></div>
+  </form>
+  <p class="pessoas-note">Fim em branco = um dia só. Comunicação da substituição (TR 6.32.3, TRS13): férias, licença e treinamento com 5 dias úteis de antecedência; ausências imprevistas até o dia útil seguinte ao início.</p>
+</section>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Ausências em {{ competencia }} ({{ ausencias|length }})</h2>
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>#</th><th>Quem</th><th>Tipo</th><th>Período</th><th>Substituto</th><th>Cobre?</th><th>Comunicado</th><th>Obs.</th><th></th></tr></thead>
+      <tbody>
+        {% for a in ausencias %}
+        {% set cobre = a.substituto_nome and a.substituto_mesmo_perfil and a.substituto_qualificado %}
+        <tr>
+          <td>{{ '%02d' % a.posicao.numero }}</td>
+          <td>{{ a.profissional.nome if a.profissional else 'Posição vaga' }}</td>
+          <td>{{ a.tipo }}</td>
+          <td style="white-space:nowrap">{{ a.data_inicio.strftime('%d/%m') }}{% if a.data_fim != a.data_inicio %} a {{ a.data_fim.strftime('%d/%m/%Y') }}{% else %}/{{ a.data_inicio.year }}{% endif %}</td>
+          <td>{{ a.substituto_nome or '—' }}</td>
+          <td><span class="status-badge {{ 'status-success' if cobre else 'status-error' }}">{{ 'Sim' if cobre else 'Não' }}</span></td>
+          <td>{{ a.comunicado_em.strftime('%d/%m/%Y') if a.comunicado_em else '—' }}</td>
+          <td class="muted" style="font-size:12px;margin:0">{{ a.observacao or '' }}</td>
+          <td class="n">
+            <form method="post" action="/pessoas/ausencias/{{ a.id }}/delete" class="pessoas-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9"><div class="empty-state">Nenhuma ausência neste mês.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

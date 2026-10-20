@@ -104,6 +104,9 @@ DASHBOARD_SIZES = {"pequeno", "medio", "grande", "total"}
 DASHBOARD_BULK_ACTIONS = {"activate", "deactivate", "delete", "delete_all"}
 DESTRUCTIVE_DASHBOARD_BULK_ACTIONS = {"delete", "delete_all"}
 DASHBOARD_COMPARE_PERIODS = {"mes_anterior", "ano_anterior"}
+# Coluna opcional das fontes usada pelo filtro "Entidade" do dashboard; fontes sem ela ignoram o filtro.
+DASHBOARD_ENTITY_FIELD = "entidade"
+DASHBOARD_ENTITY_OPTIONS_LIMIT = 200
 DASHBOARD_ICONS = {
     "ti-ticket",
     "ti-check",
@@ -605,23 +608,55 @@ def widget_aggregate_sql(widget: DashboardWidget) -> str:
     return f"{widget.aggregation.upper()}({quote_column(widget.value_field)})"
 
 
+def entity_filter_clause(source: DashboardSource, entity: str | None) -> tuple[str | None, dict]:
+    if not entity or DASHBOARD_ENTITY_FIELD not in dashboard_column_names(source):
+        return None, {}
+    return f"{quote_column(DASHBOARD_ENTITY_FIELD)} = :entity_filter", {"entity_filter": entity}
+
+
+def dashboard_entity_options(widgets: list[DashboardWidget]) -> list[str]:
+    tables = set()
+    for widget in widgets:
+        for source in (widget.source, widget.source_b):
+            if source and source.is_active and DASHBOARD_ENTITY_FIELD in dashboard_column_names(source):
+                tables.add(source.source_table)
+    values: set[str] = set()
+    for source_table in sorted(tables):
+        database_name, physical_table = dashboard_source_parts(source_table)
+        query = (
+            f"SELECT DISTINCT {quote_column(DASHBOARD_ENTITY_FIELD)} AS `value` "
+            f"FROM {quote_identifier(database_name)}.{quote_identifier(physical_table)} "
+            f"WHERE {quote_column(DASHBOARD_ENTITY_FIELD)} IS NOT NULL LIMIT {DASHBOARD_ENTITY_OPTIONS_LIMIT}"
+        )
+        try:
+            with local_engine.connect() as connection:
+                apply_query_timeout(connection)
+                values.update(str(row[0]) for row in connection.execute(text(query)) if row[0] not in (None, ""))
+        except SQLAlchemyError as exc:
+            logger.warning("Opcoes de entidade indisponiveis para %s: %s", source_table, exc)
+    return sorted(values)[:DASHBOARD_ENTITY_OPTIONS_LIMIT]
+
+
 def execute_widget_aggregate(
     widget: DashboardWidget,
     time_field: str | None,
     date_from: date | None = None,
     date_to: date | None = None,
     force_count: bool = False,
+    entity: str | None = None,
 ) -> float:
     database_name, physical_table = dashboard_source_parts(widget.source.source_table)
     safe_database = quote_identifier(database_name)
     safe_table = quote_identifier(physical_table)
-    where_sql = ""
+    period_clause = None
     params = {}
     if time_field and date_from and date_to:
         col_type = _get_column_type(physical_table, time_field, database_name)
-        filter_expr = _period_filter_expr(quote_column(time_field), col_type)
-        where_sql = f" WHERE {filter_expr}"
+        period_clause = _period_filter_expr(quote_column(time_field), col_type)
         params = {"date_from": date_from, "date_to": date_to}
+    entity_clause, entity_params = entity_filter_clause(widget.source, entity)
+    params.update(entity_params)
+    where_sql = combine_where([period_clause, entity_clause])
     aggregate_sql = "COUNT(*)" if force_count else widget_aggregate_sql(widget)
     query = f"SELECT COALESCE({aggregate_sql}, 0) AS `value` FROM {safe_database}.{safe_table}{where_sql}"
     with local_engine.connect() as connection:
@@ -629,18 +664,23 @@ def execute_widget_aggregate(
         return float(connection.execute(text(query), params).scalar() or 0)
 
 
-def get_source_count(db: Session | None, source: DashboardSource, data_inicio: date, data_fim: date) -> int:
+def get_source_count(
+    db: Session | None,
+    source: DashboardSource,
+    data_inicio: date,
+    data_fim: date,
+    entity: str | None = None,
+) -> int:
     columns = dashboard_column_names(source)
     safe_time_field = source_time_field(source, columns)
     database_name, physical_table = dashboard_source_parts(source.source_table)
     safe_database = quote_identifier(database_name)
     safe_table = quote_identifier(physical_table)
-    where_sql = ""
+    period_clause = None
     params = {}
     if safe_time_field:
         col_type = _get_column_type(physical_table, safe_time_field, database_name)
-        filter_expr = _period_filter_expr(quote_column(safe_time_field), col_type)
-        where_sql = f" WHERE {filter_expr}"
+        period_clause = _period_filter_expr(quote_column(safe_time_field), col_type)
         params = {"date_from": data_inicio, "date_to": data_fim}
     else:
         logger.warning(
@@ -648,16 +688,26 @@ def get_source_count(db: Session | None, source: DashboardSource, data_inicio: d
             source.id,
             source.source_table,
         )
+    entity_clause, entity_params = entity_filter_clause(source, entity)
+    params.update(entity_params)
+    where_sql = combine_where([period_clause, entity_clause])
     query = f"SELECT COUNT(*) FROM {safe_database}.{safe_table}{where_sql}"
     with local_engine.connect() as connection:
         apply_query_timeout(connection)
         return int(connection.execute(text(query), params).scalar() or 0)
 
 
-def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: str | None, date_from: date, date_to: date) -> None:
+def apply_widget_comparison(
+    result: dict,
+    widget: DashboardWidget,
+    time_field: str | None,
+    date_from: date,
+    date_to: date,
+    entity: str | None = None,
+) -> None:
     if widget.source_id_b and widget.source_b:
-        valor_a = get_source_count(None, widget.source, date_from, date_to)
-        valor_b = get_source_count(None, widget.source_b, date_from, date_to)
+        valor_a = get_source_count(None, widget.source, date_from, date_to, entity)
+        valor_b = get_source_count(None, widget.source_b, date_from, date_to, entity)
         variacao_pct = None
         direcao = "neutral"
         if valor_b:
@@ -677,13 +727,13 @@ def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: s
         result["rows"] = [{"label": widget.title, "value": valor_a}, {"label": widget.source_b.name, "value": valor_b}]
         return
 
-    current_value = execute_widget_aggregate(widget, time_field, date_from, date_to)
+    current_value = execute_widget_aggregate(widget, time_field, date_from, date_to, entity=entity)
     compare_value = None
     variation = None
     direction = "neutral"
     compare_period = calcular_periodo_comparativo(date_from, date_to, widget.comparar_com)
     if compare_period:
-        compare_value = execute_widget_aggregate(widget, time_field, compare_period[0], compare_period[1])
+        compare_value = execute_widget_aggregate(widget, time_field, compare_period[0], compare_period[1], entity=entity)
         if compare_value:
             variation = ((current_value - compare_value) / compare_value) * 100
             if variation > 0:
@@ -702,10 +752,17 @@ def apply_widget_comparison(result: dict, widget: DashboardWidget, time_field: s
     result["rows"] = [{"label": "Total", "value": current_value}]
 
 
-def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | None, date_from: date, date_to: date) -> None:
+def apply_widget_gauge(
+    result: dict,
+    widget: DashboardWidget,
+    time_field: str | None,
+    date_from: date,
+    date_to: date,
+    entity: str | None = None,
+) -> None:
     if widget.source_id_b and widget.source_b:
-        total_a = get_source_count(settings, widget.source, date_from, date_to)
-        total_b = get_source_count(settings, widget.source_b, date_from, date_to)
+        total_a = get_source_count(settings, widget.source, date_from, date_to, entity)
+        total_b = get_source_count(settings, widget.source_b, date_from, date_to, entity)
         universo = total_a + total_b
         percentual = (total_a / universo * 100) if universo else 0.0
         status_value = "ok"
@@ -725,8 +782,12 @@ def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | 
         result["rows"] = [{"label": widget.source.name, "value": total_a}, {"label": widget.source_b.name, "value": total_b}]
         return
 
-    total = execute_widget_aggregate(widget, None, force_count=True)
-    filtered = execute_widget_aggregate(widget, time_field, date_from, date_to, force_count=True) if time_field else total
+    total = execute_widget_aggregate(widget, None, force_count=True, entity=entity)
+    filtered = (
+        execute_widget_aggregate(widget, time_field, date_from, date_to, force_count=True, entity=entity)
+        if time_field
+        else total
+    )
     percentual = (filtered / total * 100) if total else 0
     status_value = "ok"
     if widget.meta_gauge is not None:
@@ -743,7 +804,7 @@ def apply_widget_gauge(result: dict, widget: DashboardWidget, time_field: str | 
     result["rows"] = [{"label": "Filtrado", "value": filtered}, {"label": "Total", "value": total}]
 
 
-def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) -> dict:
+def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date, entity: str | None = None) -> dict:
     source = widget.source
     columns = dashboard_column_names(source)
     time_field = widget_time_field(widget, columns)
@@ -783,9 +844,9 @@ def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) ->
     if widget.widget_type in {"kpi", "comparativo", "gauge"}:
         try:
             if widget.widget_type == "gauge":
-                apply_widget_gauge(result, widget, time_field, date_from, date_to)
+                apply_widget_gauge(result, widget, time_field, date_from, date_to, entity)
             else:
-                apply_widget_comparison(result, widget, time_field, date_from, date_to)
+                apply_widget_comparison(result, widget, time_field, date_from, date_to, entity)
         except SQLAlchemyError as exc:
             result["error"] = f"Nao foi possivel consultar a fonte local: {exc}"
         return result
@@ -804,14 +865,16 @@ def load_widget_data(widget: DashboardWidget, date_from: date, date_to: date) ->
     database_name, physical_table = dashboard_source_parts(source.source_table)
     safe_database = quote_identifier(database_name)
     safe_table = quote_identifier(physical_table)
-    where_sql = ""
+    period_clause = None
     params = {}
     if time_field:
         col_type = _get_column_type(physical_table, time_field, database_name)
-        filter_expr = _period_filter_expr(quote_column(time_field), col_type)
-        where_sql = f" WHERE {filter_expr}"
+        period_clause = _period_filter_expr(quote_column(time_field), col_type)
         params = {"date_from": date_from, "date_to": date_to}
-    group_sql = f" GROUP BY {', '.join(quote_column(field) for field in group_fields)}" if group_fields else ""
+    entity_clause, entity_params = entity_filter_clause(source, entity)
+    params.update(entity_params)
+    where_sql = combine_where([period_clause, entity_clause])
+    group_sql =f" GROUP BY {', '.join(quote_column(field) for field in group_fields)}" if group_fields else ""
     top_n = dashboard_int(str(widget.top_n), 10, 1, 100)
     query = (
         f"SELECT {', '.join(selected)} FROM {safe_database}.{safe_table}"
@@ -2784,14 +2847,23 @@ def dashboard_detail(dashboard_id: int, request: Request, db: Session = Depends(
         .filter(DashboardWidget.dashboard_id == current_dashboard.id)
     )
     widgets = widgets.order_by(DashboardWidget.sort_order.asc(), DashboardWidget.title.asc()).all()
+    entity_options = dashboard_entity_options(widgets)
+    entity = (request.query_params.get("entidade") or "").strip()
+    if entity not in entity_options:
+        entity = ""
     return render(
         request,
         "dashboard.html",
         {
             "active": "dashboard",
             "dashboard": current_dashboard,
-            "widgets": [load_widget_data(widget, date_from, date_to) for widget in widgets],
-            "filters": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat()},
+            "widgets": [load_widget_data(widget, date_from, date_to, entity or None) for widget in widgets],
+            "filters": {
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "entidade": entity,
+            },
+            "entity_options": entity_options,
             "error": error,
         },
         db,

@@ -9,6 +9,29 @@
   <link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-icons/3.35.0/tabler-icons.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
   <style>
+    {% if appearance is defined %}
+    :root {
+      --sidebar: {{ appearance.theme_sidebar_color or '#172033' }};
+      --sidebar-soft: color-mix(in srgb, {{ appearance.theme_sidebar_color or '#172033' }} 82%, #ffffff);
+      --accent: {{ appearance.theme_accent_color or '#2563eb' }};
+      --bs-primary: {{ appearance.theme_accent_color or '#2563eb' }};
+      --bs-link-color: {{ appearance.theme_accent_color or '#2563eb' }};
+    }
+    .btn-primary {
+      --bs-btn-bg: var(--accent);
+      --bs-btn-border-color: var(--accent);
+      --bs-btn-hover-bg: color-mix(in srgb, var(--accent) 85%, #000000);
+      --bs-btn-hover-border-color: color-mix(in srgb, var(--accent) 85%, #000000);
+      --bs-btn-active-bg: color-mix(in srgb, var(--accent) 75%, #000000);
+    }
+    .btn-outline-primary {
+      --bs-btn-color: var(--accent);
+      --bs-btn-border-color: var(--accent);
+      --bs-btn-hover-bg: var(--accent);
+      --bs-btn-hover-border-color: var(--accent);
+      --bs-btn-active-bg: var(--accent);
+    }
+    {% endif %}
     body {
       font-family: {{ appearance.font_family if appearance is defined else 'system-ui, sans-serif' }};
       font-size: {% if appearance is defined and appearance.font_size == 'compact' %}12px{% elif appearance is defined and appearance.font_size == 'spacious' %}15px{% else %}13px{% endif %};
@@ -67,6 +90,16 @@
         {% if can_relatorios %}
         <a class="nav-link {{ 'active' if active == 'reports' else '' }}" href="/reports">Catalogo de Relatorios</a>
         {% endif %}
+        {% if current_user and current_user.is_admin %}
+        <a class="nav-link {{ 'active' if active == 'pessoas' else '' }}" href="/pessoas">
+          <i class="ti ti-users-group" style="font-size:16px" aria-hidden="true"></i>
+          Pessoas
+        </a>
+        <a class="nav-link {{ 'active' if active == 'trs' else '' }}" href="/trs">
+          <i class="ti ti-clipboard-check" style="font-size:16px" aria-hidden="true"></i>
+          Termos de Serviço (TRS)
+        </a>
+        {% endif %}
         {% if can_importacao or can_dashboard_admin or can_usuarios or can_history %}
         <span class="nav-section">Administracao</span>
         {% endif %}
@@ -101,6 +134,12 @@
         {% endif %}
         {% if can_importacao %}
         <a class="nav-link {{ 'active' if active == 'glpi_import' else '' }}" href="/admin/connectors">Conectores</a>
+        {% endif %}
+        {% if current_user and current_user.is_admin %}
+        <a class="nav-link {{ 'active' if active == 'zabbix' else '' }}" href="/admin/zabbix">
+          <i class="ti ti-heartbeat" style="font-size:16px" aria-hidden="true"></i>
+          Integração Zabbix
+        </a>
         {% endif %}
         {% if can_usuarios %}
         <a class="nav-link {{ 'active' if active == 'ldap' else '' }}" href="/admin/ldap">LDAP</a>

@@ -41,6 +41,21 @@
           <input type="text" name="portal_initials" value="{{ appearance.portal_initials or 'GR' }}" maxlength="3" oninput="this.value = this.value.toUpperCase()" style="height:32px;width:60px;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:0 10px;font-size:12px;text-transform:uppercase;text-align:center">
         </div>
       </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <div>
+          <label for="theme_sidebar_color" style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+            Cor do menu lateral
+          </label>
+          <input type="color" id="theme_sidebar_color" name="theme_sidebar_color" value="{{ appearance.theme_sidebar_color or '#172033' }}" style="height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:2px">
+        </div>
+        <div>
+          <label for="theme_accent_color" style="font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:4px">
+            Cor de destaque (botões e links)
+          </label>
+          <input type="color" id="theme_accent_color" name="theme_accent_color" value="{{ appearance.theme_accent_color or '#2563eb' }}" style="height:32px;width:100%;border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:2px">
+        </div>
+      </div>
     </div>
 
     <section class="panel">

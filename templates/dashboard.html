@@ -9,7 +9,7 @@
 <div class="page-header dashboard-builder-header">
   <div>
     <h1>{{ dashboard.name if dashboard else 'Dashboard' }}</h1>
-    <p>{{ dashboard.description if dashboard and dashboard.description else 'Widgets consolidados a partir de fontes locais habilitadas.' }}</p>
+    {% if dashboard and dashboard.description %}<p>{{ dashboard.description }}</p>{% endif %}
   </div>
   {% if current_user and current_user.is_admin %}
   <a class="btn btn-outline-primary" href="/admin/dashboard-config">Config. Dashboard</a>
@@ -23,6 +23,15 @@
   <input type="date" name="data_inicio" value="{{ filters.date_from }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
   <span style="font-size:12px; color:var(--color-text-tertiary)">até</span>
   <input type="date" name="data_fim" value="{{ filters.date_to }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+  {% if entity_options %}
+  <span style="font-size:12px; color:var(--color-text-tertiary)">Entidade</span>
+  <select name="entidade" aria-label="Entidade" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+    <option value="">Todas</option>
+    {% for option in entity_options %}
+    <option value="{{ option }}" {% if option == filters.entidade %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
   <button type="submit" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); cursor:pointer">Aplicar</button>
   <a href="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); text-decoration:none; cursor:pointer">Limpar filtro</a>
   <div style="margin-left:auto">
@@ -39,7 +48,7 @@
     {% set widget_scale_class = {'pequeno': 'widget-small', 'medio': 'widget-medium', 'grande': 'widget-large', 'total': 'widget-full'}.get(widget.size, 'widget-medium') %}
     {% set cor_widget = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.color, '#0284c7') %}
     {% set cor_secundaria = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.cor_secundaria, '#dc2626') %}
-    {% set cor_status = '#1D9E75' if item.status == 'ok' else ('#BA7517' if item.status == 'atencao' else '#E24B4A') %}
+    {% set cor_status = '#1D9E75' if item.status == 'ok' else '#BA7517' %}
     <div class="dashboard-widget-column {{ size_class }}{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %} widget-animate-in{% endif %}">
       <div id="widget-card-{{ widget.id }}" class="dashboard-widget-card widget-card {{ widget_scale_class }} widget-size-{{ widget.size }} widget-color-{{ widget.color }}" data-widget-type="{{ widget.widget_type }}" style="{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %}position:relative;padding-bottom:42px{% endif %}">
         <header class="dashboard-widget-head">
@@ -83,12 +92,14 @@
           {% elif widget.widget_type == 'gauge' %}
           <div style="display:flex; flex-direction:column; align-items:center; padding:8px 0">
             <svg viewBox="0 0 160 90" style="width:160px; height:90px">
+              {# Com meta definida, o arco segue o status (verde na meta, amarelo fora); sem meta, mantém a cor do widget. #}
+              {% set cor_arco = cor_status if widget.meta_gauge is not none else (cor_widget if widget.source_id_b else cor_status) %}
               {% if widget.source_id_b %}
-              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="{{ cor_widget }}" stroke-width="14" stroke-linecap="round" opacity="0.25"/>
+              <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="{{ cor_arco }}" stroke-width="14" stroke-linecap="round" opacity="0.25"/>
               {% else %}
               <path d="M20,80 A60,60 0 0,1 140,80" fill="none" stroke="#e5e5e5" stroke-width="14" stroke-linecap="round"/>
               {% endif %}
-              <path id="gauge-arc-{{ widget.id }}" fill="none" stroke="{{ cor_widget if widget.source_id_b else cor_status }}" stroke-width="14" stroke-linecap="round"/>
+              <path id="gauge-arc-{{ widget.id }}" fill="none" stroke="{{ cor_arco }}" stroke-width="14" stroke-linecap="round"/>
               <text x="80" y="72" text-anchor="middle" font-size="22" font-weight="500" fill="var(--color-text-primary)">{{ widget_data.percentual | round(1) }}%</text>
               {% if widget.meta_gauge %}
               <text x="80" y="84" text-anchor="middle" font-size="9" fill="var(--color-text-tertiary)">meta: {{ widget.meta_gauge | int }}%</text>
@@ -108,7 +119,7 @@
             })();
             </script>
             {% if widget.meta_gauge %}
-            <div style="font-size:11px; margin-top:4px; color:{% if widget_data.status == 'ok' %}var(--color-text-success){% elif widget_data.status == 'atencao' %}var(--color-text-warning){% else %}var(--color-text-danger){% endif %}">
+            <div style="font-size:11px; margin-top:4px; color:{% if widget_data.status == 'ok' %}var(--color-text-success){% else %}var(--color-text-warning){% endif %}">
               {% if widget_data.status == "ok" %}Dentro da meta{% elif widget_data.status == "atencao" %}Atenção - próximo do limite{% else %}Abaixo da meta{% endif %}
             </div>
             {% endif %}

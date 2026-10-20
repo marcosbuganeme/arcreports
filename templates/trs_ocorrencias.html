@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% macro opcoes_profissional(selecionado=None) -%}
+  <option value="">—</option>
+  {% for p in profissionais %}<option value="{{ p.id }}" {{ 'selected' if p.id == selecionado else '' }}>{{ p.nome }}</option>{% endfor %}
+{%- endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Termos de Serviço (TRS)</h1>
+    <p>Registro das ocorrências da Tabela 26 do TR. Os pontos saem do catálogo; durante o PAO são multiplicados pelo fator do mês.</p>
+  </div>
+  <form method="get" action="/trs" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <div>
+      <label class="form-label" for="status">Status</label>
+      <select class="form-select" id="status" name="status">
+        <option value="">Todos</option>
+        {% for s in status_lista %}<option {{ 'selected' if s == filtro_status else '' }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.trs_tabs(active_tab, competencia) }}
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Registrar ocorrência</h2>
+  <form method="post" action="/trs" class="pessoas-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div style="grid-column:span 3">
+      <label class="form-label" for="codigo">TRS</label>
+      <select class="form-select" id="codigo" name="codigo" required>
+        <option value="">Selecione…</option>
+        {% for t in tipos %}
+        <option value="{{ t.codigo }}" data-pontos="{{ t.pontos }}" data-unidade="{{ unidades[t.unidade][0] }}"
+                data-qtd="{{ unidades[t.unidade][1] }}" data-regra="{{ t.regra or '' }}" data-desc="{{ t.descricao }}">
+          {{ t.codigo }} · {{ t.pontos }} pts · {{ t.descricao[:95] }}{{ '…' if t.descricao|length > 95 else '' }}
+        </option>
+        {% endfor %}
+      </select>
+      <p class="pessoas-note" id="trs-ajuda">Escolha o TRS para ver a regra de pontuação.</p>
+    </div>
+    <div>
+      <label class="form-label" for="data_ocorrencia">Data da ocorrência</label>
+      <input class="form-control" type="date" id="data_ocorrencia" name="data_ocorrencia" value="{{ hoje.isoformat() }}" required>
+    </div>
+    <div>
+      <label class="form-label" for="quantidade" id="rotulo-qtd">Quantidade</label>
+      <input class="form-control" type="number" min="1" id="quantidade" name="quantidade" value="1" required>
+    </div>
+    <div id="bloco-natureza" hidden>
+      <label class="form-label" for="natureza">Natureza</label>
+      <select class="form-select" id="natureza" name="natureza">
+        <option value="ocorrencia">Ocorrência (reincidência)</option>
+        <option value="notificacao">Notificação formal (0 ponto)</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label" for="fonte">Fonte</label>
+      <select class="form-select" id="fonte" name="fonte">{% for f in fontes %}<option>{{ f }}</option>{% endfor %}</select>
+    </div>
+    <div>
+      <label class="form-label" for="profissional_id">Profissional (opcional)</label>
+      <select class="form-select" id="profissional_id" name="profissional_id">{{ opcoes_profissional() }}</select>
+    </div>
+    <div style="grid-column:span 3">
+      <label class="form-label" for="evidencia">Evidência</label>
+      <input class="form-control" id="evidencia" name="evidencia" maxlength="500" required
+             placeholder="Nº do chamado, ofício/notificação SEI, data e descrição objetiva do fato">
+    </div>
+    <div><button class="btn btn-primary" type="submit">Registrar</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Ocorrências em {{ competencia }} ({{ ocorrencias|length }})</h2>
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>Data</th><th>TRS</th><th>Evidência</th><th class="n">Qtd.</th><th class="n">Pontos</th><th>Status</th><th>Fonte</th><th></th></tr></thead>
+      <tbody>
+        {% for oc, pontos in ocorrencias %}
+        <tr>
+          <td style="white-space:nowrap">{{ oc.data_ocorrencia.strftime('%d/%m/%Y') }}</td>
+          <td><span class="trs-cod" title="{{ oc.tipo.descricao }}">{{ oc.codigo }}</span>{% if oc.natureza == 'notificacao' %} <span class="status-badge status-none">notificação</span>{% endif %}</td>
+          <td>{{ oc.evidencia }}{% if oc.profissional %} <span class="trs-desc">· {{ oc.profissional.nome }}</span>{% endif %}
+              {% if oc.justificativa %}<div class="trs-desc">Justificativa: {{ oc.justificativa }}</div>{% endif %}</td>
+          <td class="n">{{ oc.quantidade }}</td>
+          <td class="n">{{ pontos }}</td>
+          <td>
+            {% set cls = {'Em aberto': 'status-warn', 'Contestada': 'status-pending', 'Confirmada': 'status-error', 'Cancelada': 'status-none'}[oc.status] %}
+            <span class="status-badge {{ cls }}">{{ oc.status }}</span>
+          </td>
+          <td class="trs-desc">{{ oc.fonte }}{% if oc.origem == 'automatico' and oc.fonte != 'Detecção automática' %} · sugerida pelo sistema{% endif %}</td>
+          <td class="n"><a href="/trs?competencia={{ competencia }}&editar={{ oc.id }}#editar">Editar</a></td>
+        </tr>
+        {% if editar_id == oc.id %}
+        <tr id="editar">
+          <td colspan="8" style="background:#f8fafc;padding:16px">
+            <p class="trs-desc" style="margin:0 0 10px">{{ oc.codigo }} · {{ oc.tipo.descricao }}</p>
+            <form method="post" action="/trs/{{ oc.id }}" class="pessoas-form-grid">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="codigo" value="{{ oc.codigo }}">
+              <input type="hidden" name="natureza" value="{{ oc.natureza }}">
+              <div><label class="form-label">Data</label><input class="form-control" type="date" name="data_ocorrencia" value="{{ oc.data_ocorrencia.isoformat() }}" required></div>
+              <div><label class="form-label">{{ unidades[oc.tipo.unidade][1] }}</label><input class="form-control" type="number" min="1" name="quantidade" value="{{ oc.quantidade }}"></div>
+              <div>
+                <label class="form-label">Status</label>
+                <select class="form-select" name="status">{% for s in status_lista %}<option {{ 'selected' if s == oc.status else '' }}>{{ s }}</option>{% endfor %}</select>
+              </div>
+              <div>
+                <label class="form-label">Fonte</label>
+                <select class="form-select" name="fonte">{% for f in fontes %}<option {{ 'selected' if f == oc.fonte else '' }}>{{ f }}</option>{% endfor %}</select>
+              </div>
+              <div><label class="form-label">Profissional</label><select class="form-select" name="profissional_id">{{ opcoes_profissional(oc.profissional_id) }}</select></div>
+              <div style="grid-column:span 3"><label class="form-label">Evidência</label><input class="form-control" name="evidencia" value="{{ oc.evidencia }}" maxlength="500" required></div>
+              <div style="grid-column:span 3"><label class="form-label">Justificativa (obrigatória para contestar ou cancelar)</label><textarea class="form-control" name="justificativa" rows="2">{{ oc.justificativa or '' }}</textarea></div>
+              <div><button class="btn btn-primary" type="submit">Salvar</button></div>
+            </form>
+            <details style="margin-top:14px">
+              <summary class="muted" style="cursor:pointer;font-size:13px">Excluir registro</summary>
+              <form method="post" action="/trs/{{ oc.id }}/delete" style="margin-top:8px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <p class="pessoas-note">Só para registros lançados por engano. Ocorrência indevida apontada pelo DETRAN deve ser <strong>Cancelada</strong> com justificativa, para manter o histórico.</p>
+                <button class="btn btn-sm btn-danger" type="submit">Excluir definitivamente</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="8"><div class="empty-state">Nenhuma ocorrência nesta competência.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="pessoas-note">Status: <strong>Em aberto</strong> = registrada, ainda sem posição do DETRAN · <strong>Contestada</strong> = justificativa apresentada (TR 8.28.4.19), continua contando até a decisão · <strong>Confirmada</strong> = glosa mantida · <strong>Cancelada</strong> = desconsiderada (não conta pontos). Notificações não geram pontos.</p>
+</section>
+
+<script>
+(function () {
+  const sel = document.getElementById("codigo");
+  const ajuda = document.getElementById("trs-ajuda");
+  const rotulo = document.getElementById("rotulo-qtd");
+  const bloco = document.getElementById("bloco-natureza");
+  function atualizar() {
+    const o = sel.options[sel.selectedIndex];
+    if (!o || !o.value) { ajuda.textContent = "Escolha o TRS para ver a regra de pontuação."; rotulo.textContent = "Quantidade"; bloco.hidden = true; return; }
+    rotulo.textContent = o.dataset.qtd;
+    ajuda.textContent = o.dataset.desc + " — " + o.dataset.pontos + " pontos · " + o.dataset.unidade + "." +
+      (o.dataset.regra === "reincidencia" ? " Só pontua após reincidência formalmente notificada: registre antes a notificação." : "");
+    bloco.hidden = o.dataset.regra !== "reincidencia";
+  }
+  sel.addEventListener("change", atualizar);
+  atualizar();
+})();
+</script>
+{% endblock %}
