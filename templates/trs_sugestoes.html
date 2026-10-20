@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>TRS · Sugestões automáticas</h1>
+    <p>Ocorrências que o sistema detectou sozinho a partir do módulo Pessoas, das datas de controle e do GLPI. Nada vira ponto sem a sua confirmação.</p>
+  </div>
+  <form method="get" action="/trs/sugestoes" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.trs_tabs(active_tab, competencia) }}
+
+{% for aviso in avisos %}<div class="alert alert-warning">{{ aviso }}</div>{% endfor %}
+
+<section class="panel">
+  {% if sugestoes %}
+  <form method="post" action="/trs/sugestoes">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="competencia" value="{{ competencia }}">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <h2 style="font-size:18px;margin:0">{{ sugestoes|length }} sugestão(ões) em {{ competencia }}</h2>
+      <label class="form-check"><input class="form-check-input" type="checkbox" id="todas"> <span class="form-check-label">Selecionar todas</span></label>
+    </div>
+    <div class="pessoas-wrap">
+      <table class="pessoas-table">
+        <thead><tr><th></th><th>TRS</th><th>Data</th><th class="n">Qtd.</th><th class="n">Pontos</th><th>Evidência</th></tr></thead>
+        <tbody>
+          {% for s in sugestoes %}
+          {% set t = tipos[s.codigo] %}
+          <tr>
+            <td><input class="form-check-input sug" type="checkbox" name="chave" value="{{ s.chave }}" aria-label="Registrar {{ s.codigo }}"></td>
+            <td><span class="trs-cod" title="{{ t.descricao }}">{{ s.codigo }}</span></td>
+            <td style="white-space:nowrap">{{ s.data.strftime('%d/%m/%Y') }}</td>
+            <td class="n">{{ s.quantidade }}</td>
+            <td class="n">{{ t.pontos * s.quantidade }}</td>
+            <td>{{ s.evidencia }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px"><button class="btn btn-primary" type="submit">Registrar selecionadas</button></div>
+  </form>
+  {% else %}
+  <div class="empty-state">Nenhuma sugestão pendente em {{ competencia }}.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">O que é detectado</h2>
+  <table class="pessoas-table">
+    <tbody>
+      <tr><td class="trs-cod">TRS5</td><td>Certificação vencida de profissional ativo (cadastrada em Pessoas → Profissionais): 1 registro por certificação, quantidade = dias vencidos no mês.</td></tr>
+      <tr><td class="trs-cod">TRS13</td><td>Ausência sem "Comunicado ao DETRAN em" após o prazo, ou comunicada depois do prazo (planejadas: 5 dias úteis antes; imprevistas: dia útil seguinte).</td></tr>
+      <tr><td class="trs-cod">TRS17</td><td>Relatório Geral de Faturamento do mês anterior entregue depois do 5º dia útil (data informada em Apuração do mês). Sem data de entrega, conta até hoje.</td></tr>
+      <tr><td class="trs-cod">TRS29</td><td>CMDB integrado ao ITSM não implantado até 60 dias do início (21/11/2026). Quantidade = nº do mês de atraso (20, 40, 60 pontos…).</td></tr>
+      <tr><td class="trs-cod">TRS45</td><td>Chamado do GLPI não solucionado até o triplo do prazo de solução (TMSI/TMSR) que o próprio GLPI calculou. Um registro por chamado.</td></tr>
+      <tr><td class="trs-cod">TRS46</td><td>INS11 do contrato abaixo de 80% por 3 meses seguidos (avaliado ao fim do mês).</td></tr>
+    </tbody>
+  </table>
+  <p class="pessoas-note">Os demais TRS dependem de fato observado (crachá, reunião, imperícia etc.) e são registrados na aba Ocorrências.</p>
+</section>
+
+<script>
+(function () {
+  const todas = document.getElementById("todas");
+  if (todas) todas.addEventListener("change", () => document.querySelectorAll(".sug").forEach(c => c.checked = todas.checked));
+})();
+</script>
+{% endblock %}

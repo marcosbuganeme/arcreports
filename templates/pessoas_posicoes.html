@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pessoas · Posições</h1>
+    <p>As 35 posições do quadro mínimo (TR Tabela 01; o Anexo III prevalece). A equipe 04 (NOC) fica fora do INS11.</p>
+  </div>
+</div>
+
+{{ m.tabs(active_tab) }}
+
+<section class="panel">
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>#</th><th>Item</th><th>Equipe</th><th>Perfil</th><th>Modalidade</th><th class="n">h/dia</th><th>Ativa</th><th></th></tr></thead>
+      <tbody>
+        {% for p in posicoes %}
+        <tr class="{{ 'fora' if p.fora_ins11 else '' }}">
+          <td>{{ '%02d' % p.numero }}</td>
+          <td>0{{ p.item }}</td>
+          <td>{{ p.equipe }} · {{ p.equipe_nome }}</td>
+          <td>{{ p.perfil }}{% if p.fora_ins11 %} <span class="status-badge status-none">fora do INS11</span>{% endif %}</td>
+          <td><input class="form-control form-control-sm" form="pos-{{ p.id }}" name="modalidade" value="{{ p.modalidade or '' }}" maxlength="80"></td>
+          <td class="n"><input class="form-control form-control-sm" form="pos-{{ p.id }}" name="horas_dia" value="{{ m.num(p.horas_dia, 1) }}" inputmode="decimal" style="width:70px;text-align:right"></td>
+          <td><input class="form-check-input" type="checkbox" form="pos-{{ p.id }}" name="ativo" {{ 'checked' if p.ativo else '' }} aria-label="Posição {{ p.numero }} ativa"></td>
+          <td class="n">
+            <form id="pos-{{ p.id }}" method="post" action="/pessoas/posicoes/{{ p.id }}" class="pessoas-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Salvar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="pessoas-note">Posição inativa sai do INS11 e dos alertas de vaga. Use só se o Anexo III mudar o quadro.</p>
+</section>
+{% endblock %}

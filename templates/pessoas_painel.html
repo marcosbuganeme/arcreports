@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pessoas</h1>
+    <p>Quadro mínimo do contrato (TR Tabela 01), disponibilidade de profissionais (INS11) e rotatividade.</p>
+  </div>
+  <form method="get" action="/pessoas" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.tabs(active_tab, competencia) }}
+
+{% if not parametro %}
+<div class="alert alert-warning">
+  Parâmetros de {{ competencia }} ainda não cadastrados. O cálculo usa dias úteis sem feriados, mês de execução 1 e leitura C, sem valor de glosa.
+  <a href="/pessoas/parametros?competencia={{ competencia }}">Cadastrar parâmetros</a>.
+</div>
+{% endif %}
+
+<div class="pessoas-cards">
+  {% for item in itens %}
+  <section class="panel">
+    <span class="muted" style="font-size:12px">INS11 · Item 0{{ item.item }} · {{ 'Central de Serviços' if item.item == 1 else 'Infraestrutura' }} · N = {{ item.n }} · D = {{ item.d }}</span>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:6px">
+      <div class="pessoas-big">{{ m.num(item.ins11) }}%</div>
+      {% if item.pontos > 0 %}
+      <span class="status-badge status-error">Gera glosa</span>
+      {% elif item.ins11 < 98 %}
+      <span class="status-badge status-warn">Abaixo de 98%, sem glosa nesta leitura</span>
+      {% else %}
+      <span class="status-badge status-success">Na meta</span>
+      {% endif %}
+    </div>
+    <dl class="pessoas-kv">
+      <dt>Perfis-dia abaixo do mínimo (ΣDi)</dt><dd>{{ item.soma_di }}</dd>
+      <dt>Meta nesta leitura</dt><dd>{{ m.num(item.meta) }}%</dd>
+      <dt>Pontos</dt><dd>{{ m.num(item.pontos) }}</dd>
+      <dt><strong>Glosa estimada</strong></dt><dd><strong>{{ m.money(item.glosa) }}</strong></dd>
+    </dl>
+    <table class="pessoas-table" style="margin-top:12px">
+      <thead><tr><th>Leitura do PAO</th><th class="n">Meta</th><th class="n">Pontos</th><th class="n">Glosa</th></tr></thead>
+      <tbody>
+        {% for l in item.leituras %}
+        <tr {% if l.chave == leitura %}style="font-weight:600;background:#f1f5f9"{% endif %}>
+          <td>{{ l.chave }} · {{ l.nome }}</td><td class="n">{{ m.num(l.meta) }}%</td><td class="n">{{ m.num(l.pontos) }}</td><td class="n">{{ m.money(l.glosa) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if item.ins11 < 80 %}<p class="pessoas-note" style="color:#b91c1c">Abaixo de 80%: se repetir por 3 meses seguidos, soma TRS46 (50 pontos).</p>{% endif %}
+  </section>
+  {% endfor %}
+
+  <section class="panel">
+    <span class="muted" style="font-size:12px">Rotatividade · {{ janela_rotatividade[0].strftime('%d/%m/%Y') }} a {{ janela_rotatividade[1].strftime('%d/%m/%Y') }} · meta ≤ 15%</span>
+    {% for r in rotatividade %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:10px">
+      <div><strong>{{ r.indicador }}</strong> · {{ r.grupo }} <span class="muted" style="font-size:12px">equipes {{ r.equipes }} · {{ r.saidas }} desligamento{{ "s" if r.saidas != 1 else "" }} / {{ r.alocados }} alocados</span></div>
+      <div style="display:flex;gap:8px;align-items:baseline">
+        <span class="pessoas-big" style="font-size:22px">{{ m.num(r.percentual, 1) }}%</span>
+        <span class="status-badge {{ 'status-success' if r.na_meta else 'status-error' }}">{{ 'Na meta' if r.na_meta else 'Acima de 15%' }}</span>
+      </div>
+    </div>
+    {% endfor %}
+    <p class="pessoas-note">TR Tabelas 18 e 19: desligados sem justa causa nos últimos 3 meses ÷ profissionais alocados no grupo. INS09 = Infraestrutura (equipes 05–12); INS10 = Central de Serviços (01–03); NOC fora. Vigência a partir do 3º mês de execução.</p>
+  </section>
+
+  <section class="panel">
+    <span class="muted" style="font-size:12px">Total do INS11 no mês · leitura {{ leitura }} · mês de execução {{ mes_execucao }} (fator {{ (fator * 100)|round|int }}%)</span>
+    <div class="pessoas-big" style="margin-top:6px">{{ m.money(glosa_total) }}</div>
+    <p class="pessoas-note">
+      {{ dias_uteis }} dias úteis{% if feriados %}, feriados: {% for f in feriados %}{{ f.strftime('%d/%m') }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.
+      INS11 = [1 − ΣDi ÷ (N × D)] × 100. Equipe 04 (NOC) fora do cálculo. 25 pontos por 1% abaixo da meta; 1 ponto = 0,1% do valor mensal do item.
+      Estimativa gerencial: não substitui a apuração do fiscal.
+    </p>
+  </section>
+</div>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Alertas ({{ alertas|length }})</h2>
+  {% if alertas %}
+  <table class="pessoas-table">
+    <tbody>
+      {% for a in alertas %}
+      <tr>
+        <td style="width:220px"><span class="status-badge {{ 'status-error' if a.nivel == 'erro' else 'status-warn' }}">{{ a.tipo }}</span></td>
+        <td>{{ a.texto }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">Nenhum alerta.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Quadro mínimo em {{ competencia }}</h2>
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead>
+        <tr><th>#</th><th>Perfil</th><th>Titular</th><th>Modalidade</th><th class="n">h/dia</th><th class="n">Faltas</th><th class="n">Cobertos</th><th class="n">Di</th><th class="n">Débito (h)</th><th>Situação</th></tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(equipe='') %}
+        {% for l in linhas %}
+        {% if l.posicao.equipe != ns.equipe %}
+        {% set ns.equipe = l.posicao.equipe %}
+        <tr class="grupo"><td colspan="10">Equipe {{ l.posicao.equipe }} · {{ l.posicao.equipe_nome }} · Item 0{{ l.posicao.item }}{% if l.posicao.fora_ins11 %} · fora do INS11{% endif %}</td></tr>
+        {% endif %}
+        <tr class="{{ 'fora' if l.posicao.fora_ins11 else '' }}">
+          <td>{{ '%02d' % l.posicao.numero }}</td>
+          <td>{{ l.posicao.perfil }}</td>
+          <td>{{ l.titular.nome if l.titular else '—' }}</td>
+          <td class="muted" style="margin:0">{{ l.posicao.modalidade or '' }}</td>
+          <td class="n">{{ m.num(l.posicao.horas_dia, 1) }}</td>
+          <td class="n">{{ l.faltas or '—' }}</td>
+          <td class="n">{{ l.cobertos or '—' }}</td>
+          <td class="n">{{ '—' if l.posicao.fora_ins11 else l.di }}</td>
+          <td class="n">{% if l.di %}<strong style="color:#b91c1c">{{ m.num(l.di * l.posicao.horas_dia, 1) }}</strong>{% else %}—{% endif %}</td>
+          <td>
+            {% if l.posicao.fora_ins11 %}<span class="status-badge status-none">Fora do INS11</span>
+            {% elif l.di %}<span class="status-badge status-error">{{ l.di }} dia{{ 's' if l.di > 1 else '' }} abaixo do mínimo</span>
+            {% elif l.faltas %}<span class="status-badge status-warn">Falta coberta</span>
+            {% else %}<span class="status-badge status-success">Completo</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="pessoas-note">Falta = dia útil sem titular alocado ou com ausência registrada. Coberto = havia substituto do mesmo perfil e qualificado (TR 6.34.7). Di = faltas − cobertos.</p>
+</section>
+{% endblock %}

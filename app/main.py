@@ -26,10 +26,11 @@ from app.glpi_import import run_connector_import, seed_connector_settings
 from app.models import AdminActionLog, Dashboard, DashboardWidget, GlpiImportLog, ConnectorConfig, ConnectorRun, Report, ReportCategory, ReportExecution, SystemConfig, User
 from app.reporting import cleanup_expired_temp_report_tables, cleanup_orphan_temp_report_tables, ensure_reporting_schema, run_auto_index_maintenance
 from app.reporting import run_select
-from app.routes import contract, contract_registry, admin_access, appearance, auth, dashboard, db_users, history, imports, local_tables, report_categories, reports, sql_console, system_health
+from app.routes import contract, contract_registry, admin_access, appearance, auth, dashboard, db_users, history, imports, local_tables, pessoas, report_categories, reports, sql_console, system_health, trs, zabbix
 from app.security import ensure_admin_user, ensure_portal_groups, generate_csrf_token
 from app.system_config import set_system_config_value
 from app.timezone import format_datetime_portal, format_local_datetime
+from app.zabbix_ind import run_zabbix_job
 
 
 LOG_DIR = Path(__file__).resolve().parents[1] / "logs"
@@ -1066,6 +1067,14 @@ def startup() -> None:
         max_instances=1,
         coalesce=True,
     )
+    app.state.scheduler.add_job(
+        run_zabbix_job,
+        CronTrigger(hour="6,12,18", minute=50, timezone=SCHEDULER_TZ),
+        id="zabbix-ind-coleta",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     app.state.reload_glpi_import_schedule = reload_glpi_import_schedule
     app.state.reload_report_schedule = reload_report_schedule
     app.state.reload_report_scheduler = reload_report_scheduler
@@ -1096,3 +1105,6 @@ app.include_router(db_users.router)
 app.include_router(appearance.router)
 app.include_router(sql_console.router)
 app.include_router(system_health.router)
+app.include_router(pessoas.router)
+app.include_router(trs.router)
+app.include_router(zabbix.router)

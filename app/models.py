@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Table, Text, UniqueConstraint, func
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 
@@ -625,3 +625,151 @@ CONTRACT_INTERNAL_TABLES = frozenset({
     'contract_holidays', 'contract_absences', 'contract_staff', 'contract_availability',
     'contract_project_scores', 'contract_registry_status', 'contract_invoice_map', 'contract_entity_map',
 })
+
+
+# Módulo Pessoas (quadro mínimo do contrato e INS09/INS10/INS11).
+# LGPD: guarda só nome, função, datas e certificações.
+class PessoasPosicao(Base):
+    __tablename__ = "pessoas_posicoes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    numero: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    item: Mapped[int] = mapped_column(Integer, nullable=False)
+    equipe: Mapped[str] = mapped_column(String(10), nullable=False)
+    equipe_nome: Mapped[str] = mapped_column(String(120), nullable=False)
+    perfil: Mapped[str] = mapped_column(String(160), nullable=False)
+    modalidade: Mapped[Optional[str]] = mapped_column(String(80))
+    horas_dia: Mapped[float] = mapped_column(Float, default=8, nullable=False)
+    fora_ins11: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    profissionais: Mapped[list["PessoasProfissional"]] = relationship(back_populates="posicao")
+    ausencias: Mapped[list["PessoasAusencia"]] = relationship(back_populates="posicao")
+
+
+class PessoasProfissional(Base):
+    __tablename__ = "pessoas_profissionais"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    posicao_id: Mapped[int] = mapped_column(ForeignKey("pessoas_posicoes.id"), nullable=False, index=True)
+    data_entrada: Mapped[date] = mapped_column(Date, nullable=False)
+    data_saida: Mapped[Optional[date]] = mapped_column(Date)
+    motivo_saida: Mapped[Optional[str]] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    posicao: Mapped[PessoasPosicao] = relationship(back_populates="profissionais")
+    certificacoes: Mapped[list["PessoasCertificacao"]] = relationship(
+        back_populates="profissional", cascade="all, delete-orphan"
+    )
+    ausencias: Mapped[list["PessoasAusencia"]] = relationship(
+        back_populates="profissional", cascade="all, delete-orphan"
+    )
+
+
+class PessoasAusencia(Base):
+    """Período sem o titular na posição. Sem profissional = posição vaga."""
+
+    __tablename__ = "pessoas_ausencias"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    posicao_id: Mapped[int] = mapped_column(ForeignKey("pessoas_posicoes.id"), nullable=False, index=True)
+    profissional_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pessoas_profissionais.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(40), nullable=False)
+    data_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    data_fim: Mapped[date] = mapped_column(Date, nullable=False)
+    substituto_nome: Mapped[Optional[str]] = mapped_column(String(160))
+    substituto_mesmo_perfil: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    substituto_qualificado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    comunicado_em: Mapped[Optional[date]] = mapped_column(Date)
+    observacao: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    posicao: Mapped[PessoasPosicao] = relationship(back_populates="ausencias")
+    profissional: Mapped[Optional[PessoasProfissional]] = relationship(back_populates="ausencias")
+
+
+class PessoasCertificacao(Base):
+    __tablename__ = "pessoas_certificacoes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    profissional_id: Mapped[int] = mapped_column(ForeignKey("pessoas_profissionais.id"), nullable=False, index=True)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    data_validade: Mapped[Optional[date]] = mapped_column(Date)
+
+    profissional: Mapped[PessoasProfissional] = relationship(back_populates="certificacoes")
+
+
+class PessoasParametroMes(Base):
+    __tablename__ = "pessoas_parametros_mes"
+
+    competencia: Mapped[str] = mapped_column(String(7), primary_key=True)
+    feriados: Mapped[Optional[str]] = mapped_column(Text)
+    mes_execucao: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    leitura_pao: Mapped[str] = mapped_column(String(1), default="C", nullable=False)
+    valor_item1: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    valor_item2: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+# Termos de Serviço (TR Tabela 26): catálogo e ocorrências registradas pela gestão.
+class TrsTipo(Base):
+    __tablename__ = "trs_tipos"
+
+    codigo: Mapped[str] = mapped_column(String(10), primary_key=True)
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False)
+    descricao: Mapped[str] = mapped_column(Text, nullable=False)
+    unidade: Mapped[str] = mapped_column(String(30), nullable=False)
+    pontos: Mapped[int] = mapped_column(Integer, nullable=False)
+    regra: Mapped[Optional[str]] = mapped_column(String(30))
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class TrsOcorrencia(Base):
+    __tablename__ = "trs_ocorrencias"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    codigo: Mapped[str] = mapped_column(ForeignKey("trs_tipos.codigo"), nullable=False, index=True)
+    natureza: Mapped[str] = mapped_column(String(20), default="ocorrencia", nullable=False)
+    data_ocorrencia: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    competencia: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    quantidade: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    evidencia: Mapped[str] = mapped_column(String(500), nullable=False)
+    profissional_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pessoas_profissionais.id"), nullable=True)
+    fonte: Mapped[str] = mapped_column(String(30), default="Controle interno", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="Em aberto", nullable=False)
+    justificativa: Mapped[Optional[str]] = mapped_column(Text)
+    origem: Mapped[str] = mapped_column(String(15), default="manual", nullable=False)
+    chave: Mapped[Optional[str]] = mapped_column(String(120), unique=True)
+    registrado_por: Mapped[Optional[str]] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    tipo: Mapped[TrsTipo] = relationship()
+    profissional: Mapped[Optional[PessoasProfissional]] = relationship()
+
+
+# Disponibilidade diária por serviço, coletada do SLA do Zabbix (IND01/IND02, TR Tabelas 23 e 24).
+class ZabbixSli(Base):
+    __tablename__ = "zabbix_sli"
+    __table_args__ = (UniqueConstraint("data", "indicador", "serviceid", name="uq_zabbix_sli_dia"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    mes: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    indicador: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    slaid: Mapped[int] = mapped_column(Integer, nullable=False)
+    serviceid: Mapped[int] = mapped_column(Integer, nullable=False)
+    servico: Mapped[str] = mapped_column(String(255), nullable=False)
+    uptime: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    downtime: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    excluido: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sli: Mapped[Optional[float]] = mapped_column(Float)
+    coletado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

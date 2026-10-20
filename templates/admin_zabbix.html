@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Integração Zabbix · IND01 e IND02</h1>
+    <p>Disponibilidade de serviços críticos (IND01, meta ≥ 99,4%) e não críticos (IND02, meta ≥ 98,5%) calculada pelo SLA do próprio Zabbix (TR Tabelas 23 e 24).</p>
+  </div>
+  <form method="get" action="/admin/zabbix" style="display:flex;gap:8px;align-items:end">
+    <div>
+      <label class="form-label" for="competencia">Competência</label>
+      <input class="form-control" type="month" id="competencia" name="competencia" value="{{ competencia }}">
+    </div>
+    <button class="btn btn-primary" type="submit">Ver</button>
+  </form>
+</div>
+
+{{ m.estilos() }}
+{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="pessoas-cards">
+  {% for r in resumo %}
+  <section class="panel">
+    <span class="muted" style="font-size:12px">{{ r.indicador }} · {{ 'Serviços críticos' if r.indicador == 'IND01' else 'Serviços não críticos' }} · {{ competencia }} · {{ r.servicos }} serviços · {{ r.dias }} dias</span>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:6px">
+      <div class="pessoas-big">{% if r.valor is not none %}{{ m.num(r.valor, 3) }}%{% else %}—{% endif %}</div>
+      {% if r.valor is none %}<span class="status-badge status-none">Sem dados</span>
+      {% elif r.na_meta %}<span class="status-badge status-success">Na meta (≥ {{ m.num(r.meta, 1) }}%)</span>
+      {% else %}<span class="status-badge status-error">Abaixo da meta (≥ {{ m.num(r.meta, 1) }}%)</span>{% endif %}
+    </div>
+    {% if r.piores %}
+    <table class="pessoas-table" style="margin-top:12px">
+      <thead><tr><th>Serviços com menor disponibilidade</th><th class="n">Disponib.</th></tr></thead>
+      <tbody>
+        {% for nome, valor, dias in r.piores %}
+        <tr><td>{{ nome }}</td><td class="n">{% if valor < r.meta %}<strong style="color:#b91c1c">{{ m.num(valor, 3) }}%</strong>{% else %}{{ m.num(valor, 3) }}%{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="pessoas-cards">
+  <section class="panel">
+    <h2 style="font-size:18px;margin:0 0 12px">Conexão</h2>
+    <form method="post" action="/admin/zabbix">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="form-label" for="url">URL do Zabbix</label>
+      <input class="form-control" id="url" name="url" value="{{ cfg.url }}" placeholder="https://zabbix.detran.go.gov.br" required>
+      <label class="form-label" for="token" style="margin-top:10px">Token da API {% if cfg.tem_token %}<span class="status-badge status-success">configurado</span>{% endif %}</label>
+      <input class="form-control" type="password" id="token" name="token" autocomplete="new-password" placeholder="{{ 'deixe em branco para manter o atual' if cfg.tem_token else 'cole o token gerado em Usuários › Tokens de API' }}">
+      <div class="pessoas-form-grid" style="margin-top:10px">
+        <div><label class="form-label" for="sla_ind01">ID do SLA do IND01</label><input class="form-control" id="sla_ind01" name="sla_ind01" value="{{ cfg.sla.IND01 }}" inputmode="numeric"></div>
+        <div><label class="form-label" for="sla_ind02">ID do SLA do IND02</label><input class="form-control" id="sla_ind02" name="sla_ind02" value="{{ cfg.sla.IND02 }}" inputmode="numeric"></div>
+      </div>
+      <label class="form-check" style="margin-top:10px"><input class="form-check-input" type="checkbox" name="verificar" {{ 'checked' if cfg.verificar else '' }}> <span class="form-check-label">Verificar o certificado HTTPS</span></label>
+      <button class="btn btn-primary" type="submit" style="margin-top:12px">Salvar e testar</button>
+      <a class="btn btn-outline-secondary" href="/admin/zabbix?testar=1&competencia={{ competencia }}" style="margin-top:12px">Testar conexão</a>
+    </form>
+    <p class="pessoas-note">O token é guardado criptografado e nunca é exibido. Recomendado: usuário do Zabbix só de leitura, com acesso à API limitado a consultas.</p>
+  </section>
+
+  <section class="panel">
+    <h2 style="font-size:18px;margin:0 0 12px">Coleta</h2>
+    <dl class="pessoas-kv">
+      <dt>Última coleta</dt><dd>{{ cfg.ultima_coleta or '—' }}</dd>
+      <dt>Último erro</dt><dd style="text-align:left">{{ cfg.ultimo_erro or '—' }}</dd>
+    </dl>
+    <form method="post" action="/admin/zabbix/coletar" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="completo"> <span class="form-check-label">Refazer tudo desde 22/09/2026</span></label>
+      <button class="btn btn-outline-primary" type="submit" style="margin-top:8px">Coletar agora</button>
+    </form>
+    <p class="pessoas-note">Coleta automática às 06:50, 12:50 e 18:50 (antes dos relatórios). A cada coleta, os últimos 3 dias são recalculados. Manutenções programadas e falhas de terceiros devem ser cadastradas como <em>excluded downtimes</em> no SLA do Zabbix (TR 8.28.3.7).</p>
+  </section>
+</div>
+
+{% if teste %}
+<section class="panel">
+  <h2 style="font-size:18px;margin:0 0 12px">Teste de conexão</h2>
+  {% if teste.erro %}
+  <div class="alert alert-danger">{{ teste.erro }}</div>
+  {% else %}
+  <p>Zabbix <strong>{{ teste.versao }}</strong> · {{ teste.hosts }} hosts monitorados · {{ teste.slas|length }} SLAs.</p>
+  <table class="pessoas-table">
+    <thead><tr><th class="n">ID</th><th>SLA</th><th class="n">SLO</th><th>Período</th><th>Tags dos serviços</th><th class="n">Exclusões</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for s in teste.slas %}
+      <tr {% if s.slaid in (cfg.sla.IND01, cfg.sla.IND02) %}style="background:#f1f5f9;font-weight:600"{% endif %}>
+        <td class="n">{{ s.slaid }}</td>
+        <td>{{ s.name }}</td>
+        <td class="n">{{ s.slo }}%</td>
+        <td>{{ {'0': 'Diário', '1': 'Semanal', '2': 'Mensal', '3': 'Trimestral', '4': 'Anual'}.get(s.period|string, s.period) }}</td>
+        <td class="trs-desc">{% for t in s.service_tags %}{{ t.tag }}={{ t.value }}{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td class="n">{{ s.excluded_downtimes }}</td>
+        <td>{{ 'Ativo' if s.status|string == '1' else 'Inativo' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="pessoas-note">Use os SLAs <strong>diários</strong> do IND01 e do IND02: o ArcReports guarda a disponibilidade de cada serviço por dia e consolida o mês.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

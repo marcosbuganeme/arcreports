@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "_pessoas_macros.html" as m with context %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>TRS · Catálogo (TR Tabela 26)</h1>
+    <p>Termos de Serviço e pontuação conforme o TR. Altere a pontuação só se houver revisão formal dos níveis de serviço (TR 8.28.2.6).</p>
+  </div>
+</div>
+
+{{ m.trs_tabs(active_tab, competencia) }}
+
+<section class="panel">
+  <div class="pessoas-wrap">
+    <table class="pessoas-table">
+      <thead><tr><th>TRS</th><th>Termo de Serviço</th><th>Referência</th><th class="n">Pontos</th><th>Ativo</th><th></th></tr></thead>
+      <tbody>
+        {% for t in tipos %}
+        <tr>
+          <td class="trs-cod">{{ t.codigo }}{% if t.codigo in automaticos %}<div><span class="status-badge status-success" style="font-size:10px">automático</span></div>{% endif %}</td>
+          <td style="font-size:12.5px">{{ t.descricao }}{% if t.regra == 'reincidencia' %}<div class="trs-desc">Pontua só após reincidência formalmente notificada.</div>{% endif %}</td>
+          <td class="trs-desc">{{ unidades[t.unidade][0] }}</td>
+          <td class="n"><input class="form-control form-control-sm" form="tipo-{{ t.codigo }}" type="number" min="0" name="pontos" value="{{ t.pontos }}" style="width:80px;text-align:right"></td>
+          <td><input class="form-check-input" type="checkbox" form="tipo-{{ t.codigo }}" name="ativo" {{ 'checked' if t.ativo else '' }} aria-label="{{ t.codigo }} ativo"></td>
+          <td class="n">
+            <form id="tipo-{{ t.codigo }}" method="post" action="/trs/catalogo/{{ t.codigo }}" class="pessoas-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Salvar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="pessoas-note">Não existe TRS34 na Tabela 26 do TR. A pontuação vale para os registros novos e também recalcula os existentes.</p>
+</section>
+{% endblock %}

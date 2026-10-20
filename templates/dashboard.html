@@ -9,7 +9,7 @@
 <div class="page-header dashboard-builder-header">
   <div>
     <h1>{{ dashboard.name if dashboard else 'Dashboard' }}</h1>
-    <p>{{ dashboard.description if dashboard and dashboard.description else 'Widgets consolidados a partir de fontes locais habilitadas.' }}</p>
+    {% if dashboard and dashboard.description %}<p>{{ dashboard.description }}</p>{% endif %}
   </div>
   {% if current_user and current_user.is_admin %}
   <a class="btn btn-outline-primary" href="/admin/dashboard-config">Config. Dashboard</a>
@@ -21,6 +21,7 @@
 <form method="get" action="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" class="d-flex flex-wrap align-items-end gap-2 mb-3">
   <div><label for="competencia" class="form-label">Competência contratual (dia 22 ao dia 21)</label>
   <input id="competencia" type="month" name="competencia" value="{{ filters.competence }}" class="form-control" required></div>
+  {% if filters.entidade %}<input type="hidden" name="entidade" value="{{ filters.entidade }}">{% endif %}
   <button class="btn btn-primary" type="submit">Aplicar competência</button>
   <span class="text-muted">Período aplicado: {{ filters.date_from }} a {{ filters.date_to }}</span>
 </form>
@@ -30,6 +31,15 @@
   <input type="date" name="data_inicio" value="{{ filters.date_from }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
   <span style="font-size:12px; color:var(--color-text-tertiary)">até</span>
   <input type="date" name="data_fim" value="{{ filters.date_to }}" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+  {% if entity_options %}
+  <span style="font-size:12px; color:var(--color-text-tertiary)">Entidade</span>
+  <select name="entidade" aria-label="Entidade" style="font-size:12px; padding:4px 8px; border:0.5px solid var(--color-border-tertiary); border-radius:6px; background:transparent; color:var(--color-text-secondary)">
+    <option value="">Todas</option>
+    {% for option in entity_options %}
+    <option value="{{ option }}" {% if option == filters.entidade %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
   <button type="submit" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); cursor:pointer">Aplicar</button>
   <a href="{{ '/dashboard/' ~ dashboard.id if dashboard else '/dashboard' }}" style="font-size:12px; padding:4px 12px; background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:6px; color:var(--color-text-secondary); text-decoration:none; cursor:pointer">Limpar filtro</a>
   <div style="margin-left:auto">
@@ -46,7 +56,7 @@
     {% set widget_scale_class = {'pequeno': 'widget-small', 'medio': 'widget-medium', 'grande': 'widget-large', 'total': 'widget-full'}.get(widget.size, 'widget-medium') %}
     {% set cor_widget = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.color, '#0284c7') %}
     {% set cor_secundaria = {'blue': '#0284c7', 'green': '#16a34a', 'amber': '#d97706', 'red': '#dc2626', 'violet': '#7c3aed', 'slate': '#475569'}.get(widget.cor_secundaria, '#dc2626') %}
-    {% set cor_status = '#1D9E75' if item.status == 'ok' else ('#BA7517' if item.status == 'atencao' else '#E24B4A') %}
+    {% set cor_status = '#1D9E75' if item.status == 'ok' else '#BA7517' %}
     <div class="dashboard-widget-column {{ size_class }}{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %} widget-animate-in{% endif %}">
       <div id="widget-card-{{ widget.id }}" class="dashboard-widget-card widget-card {{ widget_scale_class }} widget-size-{{ widget.size }} widget-color-{{ widget.color }}" data-widget-type="{{ widget.widget_type }}" style="{% if widget.widget_type in ['kpi', 'gauge', 'comparativo'] %}position:relative;padding-bottom:42px{% endif %}">
         <header class="dashboard-widget-head">
