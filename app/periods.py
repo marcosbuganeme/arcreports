@@ -1,4 +1,5 @@
 """Limites temporais compartilhados por consultas, detalhes e exportações."""
+from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 
 

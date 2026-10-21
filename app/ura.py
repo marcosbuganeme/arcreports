@@ -1,4 +1,5 @@
 """Importação local e auditável do CSV diário Comunix/4Biz, sem chamadas à API."""
+from __future__ import annotations
 import csv
 from datetime import datetime
 import hashlib

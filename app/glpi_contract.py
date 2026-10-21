@@ -13,6 +13,7 @@ Resposta de 18/10/2026 à pergunta 11: chamado cuja categoria final está na reg
 ("Categorias sem SLA de Solução") sai do TRS45, do INS03 e do INS04, mesmo com o prazo de solução
 que o GLPI deixou gravado; a regra casa pelo código da categoria.
 """
+from __future__ import annotations
 import bisect
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta

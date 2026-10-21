@@ -1,4 +1,5 @@
 """Regras contratuais puras: sem conexão, configuração de servidor ou efeitos externos."""
+from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 import re
